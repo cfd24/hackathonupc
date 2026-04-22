@@ -1,0 +1,17 @@
+git clone https://github.com/cfd24/hackathonupc.git
+
+# show changed, staged, untracked files, etc.
+git status
+
+#download files
+git pull
+
+#add files to next commit
+git add file.py
+git add .
+
+#save a snapshot locally with a message
+git commit -m "Fix login bug"
+
+#send changes to github
+git push
