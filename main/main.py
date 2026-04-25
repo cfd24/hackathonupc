@@ -24,25 +24,28 @@ AVAILABLE_ALGORITHMS = [
 
 # --- SIMULATION CONFIGURATION ---
 BOXES_PER_HOUR = 1000
-TOTAL_DESTINATIONS = 5
-
-# Destination weights define the probability of a box going to a specific destination.
-DESTINATION_WEIGHTS = {
-    "10000001": 0.40,  # 40% of boxes
-    "10000002": 0.25,  # 25% of boxes
-    "10000003": 0.20,  # 20% of boxes
-    "10000004": 0.10,  # 10% of boxes
-    "10000005": 0.05,  #  5% of boxes
-}
 # --------------------------------
 
-def generate_box_stream(num_boxes: int, seed: int = 42) -> list[str]:
-    """Generate a reproducible stream of random 20-digit box codes based on configured weights."""
-    rng = random.Random(seed)
+def generate_destination_weights(num_destinations: int, rng: random.Random) -> dict[str, float]:
+    """Generate random destination probabilities that sum to 1.0."""
+    raw_weights = [rng.random() for _ in range(num_destinations)]
+    total_weight = sum(raw_weights)
+    
+    return {
+        f"{i + 1:08d}": weight / total_weight
+        for i, weight in enumerate(raw_weights)
+    }
+
+def generate_box_stream(
+    num_boxes: int,
+    destination_weights: dict[str, float],
+    rng: random.Random,
+) -> list[str]:
+    """Generate random 20-digit box codes based on destination weights."""
     boxes = []
     
-    dests = list(DESTINATION_WEIGHTS.keys())
-    weights = list(DESTINATION_WEIGHTS.values())
+    dests = list(destination_weights.keys())
+    weights = list(destination_weights.values())
     
     for i in range(num_boxes):
         src  = f"{rng.randint(1_000_000, 9_999_999)}"
@@ -51,6 +54,24 @@ def generate_box_stream(num_boxes: int, seed: int = 42) -> list[str]:
         boxes.append(f"{src}{dest}{bulk}")
         
     return boxes
+
+def read_non_negative_int(prompt: str) -> int:
+    while True:
+        value_input = input(prompt).strip()
+        try:
+            value = int(value_input)
+            if value >= 0:
+                return value
+            print("El valor debe ser un numero entero mayor o igual que 0.")
+        except ValueError:
+            print("Por favor, introduce un numero entero valido.")
+
+def read_positive_int(prompt: str) -> int:
+    while True:
+        value = read_non_negative_int(prompt)
+        if value > 0:
+            return value
+        print("El valor debe ser mayor que 0.")
 
 def print_banner(title: str) -> None:
     print(f"\n{'='*70}")
@@ -92,10 +113,19 @@ def run_sandbox():
         except ValueError:
             print("Por favor, introduce un número entero válido.")
     
+    num_destinations = read_positive_int("\nIntroduce cuantos destinos quieres simular: ")
+    
     # Configuration
     NUM_BOXES = 1000
+    rng = random.Random()
+    destination_weights = generate_destination_weights(num_destinations, rng)
+    
+    print("\nDestination weights for this run:")
+    for destination, weight in destination_weights.items():
+        print(f"  {destination}: {weight * 100:.2f}%")
+    
     print(f"\nGenerating {NUM_BOXES} boxes for testing...")
-    test_stream = generate_box_stream(NUM_BOXES)
+    test_stream = generate_box_stream(NUM_BOXES, destination_weights, rng)
     
     results = []
     

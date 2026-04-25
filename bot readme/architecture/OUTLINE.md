@@ -97,7 +97,7 @@ hackathonupc/
 
 **Explicación detallada:**
 - **Shuttle**: Un carro por nivel Y. Calcula el tiempo de viaje con la restricción `10 + |target - current|`.
-- **Warehouse**: Gestiona el grid 3D (`grid`), hace validación de restricciones `Z`.
+- **Warehouse**: Gestiona el grid 3D (`grid`), hace validación de restricciones `Z` y acumula el tiempo de movimiento de los shuttles tanto al almacenar como al recuperar cajas.
 
 ### `controllers/silo_simulator/simulator.py`
 **Resumen de alto nivel:** Motor que orquesta la simulación usando un algoritmo intercambiable, incluyendo el sistema de robots de paletización.
@@ -138,5 +138,7 @@ hackathonupc/
 Este script es el entorno de pruebas (*sandbox*). 
 - Genera un flujo de miles de cajas y las envía al simulador iterando sobre todos los algoritmos listados en `AVAILABLE_ALGORITHMS`
 - **Pide el tiempo de empaquetado** como input al usuario (validando que sea entero >= 0)
+- **Pide el número de destinos** y genera pesos aleatorios para repartir las cajas entre esos destinos
+- El flujo de cajas es no determinista por defecto: cada ejecución crea pesos y códigos nuevos
 - Pasa el tiempo de empaquetado al simulador
 - Finalmente, pinta una tabla con los resultados (tiempo, pallets enviados y throughput) de todos los algoritmos, permitiendo compararlos

@@ -27,7 +27,7 @@ class Warehouse:
         # Formula: t = 10 + distance
         return 10 + distance
 
-    def move_shuttle(self, y, target_x, arrival_interval=0):
+    def move_shuttle(self, y, target_x):
         """Move shuttle and return the completion time of this move."""
         move_duration = self.get_shuttle_move_time(y, target_x)
         
@@ -37,16 +37,13 @@ class Warehouse:
         
         self.shuttles_x[y] = target_x
         self.shuttles_time[y] = completion_time
-        
-        # Increment global clock by the arrival interval for the next box
-        self.global_time += arrival_interval
-        
+
         return move_duration
 
     def is_slot_empty(self, aisle, side, x, y, z):
         return (aisle, side, x, y, z) not in self.grid
 
-    def store_box(self, aisle, side, x, y, z, box_data, arrival_interval=0, check_z=True):
+    def store_box(self, aisle, side, x, y, z, box_data, check_z=True):
         """Store a box respecting Z constraint: Z=1 must be occupied before Z=2."""
         if not self.is_slot_empty(aisle, side, x, y, z):
             raise ValueError(f"Slot ({aisle}, {side}, {x}, {y}, {z}) is already occupied.")
@@ -56,7 +53,7 @@ class Warehouse:
                 raise ValueError(f"Cannot store in Z=2 if Z=1 is empty at ({aisle}, {side}, {x}, {y}).")
         
         # Storage is: shuttle moves to slot (assuming it picked up box at X=0)
-        time_taken = self.move_shuttle(y, x, arrival_interval)
+        time_taken = self.move_shuttle(y, x)
         self.grid[(aisle, side, x, y, z)] = box_data
         self.box_positions[box_data['code']] = (aisle, side, x, y, z)
         return time_taken

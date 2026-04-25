@@ -244,7 +244,7 @@ class Simulator:
             # 1. Storage (Online arrival)
             location = self.algorithm.get_storage_location(box_data, self.warehouse)
             if location:
-                time_taken = self.warehouse.store_box(*location, box_data, arrival_interval)
+                time_taken = self.warehouse.store_box(*location, box_data)
                 self.boxes_processed += 1
                 if real_time:
                     self.save_state(f"Stored {code}")
