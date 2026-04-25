@@ -3,64 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Silo Dashboard | HackUPC 2026</title>
+    <title>SILO SIM | Algorithm Comparison</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
 </head>
 <body class="dark-theme">
-    <div class="glass-container">
-        <header>
-            <div class="logo">
-                <span class="neon-text">SILO</span>_SIM_v2
+    <div class="app-container">
+        <header class="app-header">
+            <div class="brand">
+                <h1 class="logo">SILO <span class="accent">COMPARE</span></h1>
             </div>
-            <div class="metrics-bar">
-                <div class="metric-card">
-                    <label>Total Time</label>
-                    <span id="metric-time">00:00:00</span>
-                </div>
-                <div class="metric-card">
-                    <label>Throughput</label>
-                    <span id="metric-throughput">0</span> <small>box/h</small>
-                </div>
-                <div class="metric-card">
-                    <label>Full Pallets</label>
-                    <span id="metric-pallets">0</span>
-                </div>
-                <div class="metric-card">
-                    <label>Occupancy</label>
-                    <span id="metric-occupancy">0%</span>
-                </div>
-            </div>
+            <button id="btn-play" class="btn-primary">RUN COMPARISON</button>
         </header>
 
-        <main>
-            <section class="controls glass">
-                <button id="btn-play" class="btn-neon">PLAY</button>
-                <button id="btn-pause" class="btn-outline">PAUSE</button>
-                <div class="speed-control">
-                    <label>Speed</label>
-                    <input type="range" id="speed-slider" min="1" max="100" value="10">
-                    <span id="speed-val">10x</span>
+        <div class="comparison-layout">
+            <!-- Left: Simple Algorithm -->
+            <section class="algo-column" id="column-simple">
+                <div class="algo-header">
+                    <h2>Simple Algorithm</h2>
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <label>Time</label>
+                            <span id="simple-time">—</span>
+                        </div>
+                        <div class="metric">
+                            <label>P/h</label>
+                            <span id="simple-pallets-hour">—</span>
+                        </div>
+                        <div class="metric">
+                            <label>Full</label>
+                            <span id="simple-pallets">—</span>
+                        </div>
+                        <div class="metric">
+                            <label>Occ</label>
+                            <span id="simple-occupancy">—</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="aisle-grid-mini">
+                    <div class="aisle-panel-mini"><canvas id="simple-aisle-1"></canvas></div>
+                    <div class="aisle-panel-mini"><canvas id="simple-aisle-2"></canvas></div>
+                    <div class="aisle-panel-mini"><canvas id="simple-aisle-3"></canvas></div>
+                    <div class="aisle-panel-mini"><canvas id="simple-aisle-4"></canvas></div>
                 </div>
             </section>
 
-            <section id="silo-view" class="silo-grid">
-                <!-- 4 Aisles will be injected here -->
+            <!-- Right: Distance Greedy -->
+            <section class="algo-column" id="column-greedy">
+                <div class="algo-header">
+                    <h2>Distance Greedy</h2>
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <label>Time</label>
+                            <span id="greedy-time">—</span>
+                        </div>
+                        <div class="metric">
+                            <label>P/h</label>
+                            <span id="greedy-pallets-hour">—</span>
+                        </div>
+                        <div class="metric">
+                            <label>Full</label>
+                            <span id="greedy-pallets">—</span>
+                        </div>
+                        <div class="metric">
+                            <label>Occ</label>
+                            <span id="greedy-occupancy">—</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="aisle-grid-mini">
+                    <div class="aisle-panel-mini"><canvas id="greedy-aisle-1"></canvas></div>
+                    <div class="aisle-panel-mini"><canvas id="greedy-aisle-2"></canvas></div>
+                    <div class="aisle-panel-mini"><canvas id="greedy-aisle-3"></canvas></div>
+                    <div class="aisle-panel-mini"><canvas id="greedy-aisle-4"></canvas></div>
+                </div>
             </section>
-        </main>
+        </div>
 
-        <aside class="sidebar glass">
-            <h3>Destinations</h3>
-            <div id="destination-legend" class="legend-list">
-                <!-- Legends injected here -->
-            </div>
-            <div class="log-panel">
-                <h3>Live Feed</h3>
-                <div id="live-feed" class="feed-container"></div>
-            </div>
+        <aside class="compact-feed">
+            <div id="live-feed" class="feed-log-mini"></div>
         </aside>
     </div>
-
     <script src="app.js"></script>
 </body>
 </html>
