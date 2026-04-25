@@ -19,6 +19,7 @@ class Warehouse:
         
         # Global clock (the time when the last operation finished)
         self.global_time = 0.0
+        self.relocations = 0
 
     def get_shuttle_move_time(self, y, target_x):
         """Calculate time to move shuttle at level Y to target X."""
@@ -89,6 +90,7 @@ class Warehouse:
         
         # Z-constraint: If retrieving Z=2, and Z=1 is occupied, must relocate Z=1
         if z == 2 and not self.is_slot_empty(aisle, side, x, y, 1):
+            self.relocations += 1
             # 1. Pick up Z=1 box
             total_time_taken += self.move_shuttle(y, x)
             z1_box = self.grid.pop((aisle, side, x, y, 1))

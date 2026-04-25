@@ -14,7 +14,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
@@ -23,6 +23,8 @@ AVAILABLE_ALGORITHMS = [
     ("Column Grouping", ColumnGroupingAlgorithm),
     ("Velocity Column", VelocityColumnAlgorithm),
     ("Velocity Simple", VelocitySimpleAlgorithm),
+    ("Destination Zones", DestinationZoneAlgorithm),
+    ("Maturity First", MaturityFirstAlgorithm),
 ]
 
 # --- SIMULATION CONFIGURATION ---
@@ -157,6 +159,7 @@ def run_sandbox():
                 
                 # Reset simulation clocks & metrics so benchmark is isolated
                 sim.warehouse.global_time = 0.0
+                sim.warehouse.relocations = 0
                 for y in range(1, sim.warehouse.num_y + 1):
                     sim.warehouse.shuttles_time[y] = 0.0
                     sim.warehouse.shuttles_x[y] = 0
@@ -191,6 +194,7 @@ def run_sandbox():
                 "pallets": sim.sent_pallets,
                 "throughput": throughput,
                 "pallet_pct": pallet_pct,
+                "relocations": sim.warehouse.relocations,
                 "real_duration": real_duration
             })
             print(f"  -> {cap_pct:2d}% Cap Completed successfully.")
@@ -204,12 +208,21 @@ def run_sandbox():
     # Sort by simulation capacity, then time
     results.sort(key=lambda r: (r["cap_pct"], r["sim_time"]))
     
-    header = f"{'Algorithm':<20} | {'Cap %':<5} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Real Time':<10}"
+    header = f"{'Algorithm':<20} | {'Cap %':<5} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Z-Blocks':<9} | {'Real Time':<10}"
     print(header)
     print("-" * len(header))
     
     for r in results:
+        print(f"{r['name']:<20} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
+    print(header)
+    print("-" * len(header))
+    
+    for r in results:
+<<<<<<< HEAD
         print(f"{r['name']:<20} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['real_duration']:<8.2f}s")
+=======
+        print(f"{r['name']:<20} | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
+>>>>>>> 138c44583a9503190ca40ade4e581f7eff34e063
         
     print("\nSandbox execution finished.")
 
