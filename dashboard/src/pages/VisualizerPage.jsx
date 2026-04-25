@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Play, Pause, RotateCcw, ChevronLeft, 
   Settings2, Activity, ListTodo, Info,
   AlertTriangle, CheckCircle2, Warehouse,
-  ArrowDownLeft, ArrowUpRight
+  ArrowDownLeft, ArrowUpRight, Cpu, 
+  Layers, Navigation, Box
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -15,62 +16,87 @@ function cn(...inputs) {
 
 // --- CONSTANTS ---
 const AISLES = 4;
-const COLUMNS = 20; 
-const DEPTH = 2;
-const TOTAL_SLOTS = AISLES * COLUMNS * DEPTH;
+const SIDES = 2; // 1: Left, 2: Right
+const X_POS = 60;
+const Y_LEVELS = 8;
+const Z_DEPTH = 2;
 
 const ALGORITHMS = [
-  { id: 'simple', name: 'Simple Baseline', description: 'Place in first available empty slot.' },
-  { id: 'zsafe', name: 'Z-Safe Simple', description: 'Prioritize Z=1 and lower columns to keep depth clear.' },
-  { id: 'column', name: 'Column Grouping', description: 'Group by column modulo to minimize cross-column travel.' },
-  { id: 'pro', name: 'Z-Weighted Pro', description: 'Weighted selection: Z=1 (high score), low index (high score).' },
-  { id: 'greedy', name: 'Distance Greedy', description: 'Nearest slot in same aisle. High crash risk when full.' }
+  { id: 'simple', name: 'Simple Baseline', description: 'Fill slots sequentially by X, Y, Z.' },
+  { id: 'zsafe', name: 'Z-Safe Simple', description: 'Always fill Z=1 first before Z=2.' },
+  { id: 'column', name: 'Column Grouping', description: 'Group by X-axis zones (e.g. 1-20, 21-40).' },
+  { id: 'weighted', name: 'Z-Weighted Pro', description: 'Score slots: lower X and Z=1 preferred.' },
 ];
 
 export default function VisualizerPage() {
   const [searchParams] = useSearchParams();
   
-  // State
+  // UI State
+  const [activeAisle, setActiveAisle] = useState(1);
+  const [activeSide, setActiveSide] = useState(1);
   const [algoId, setAlgoId] = useState(searchParams.get('algo')?.toLowerCase() || 'simple');
   const [startCapacity, setStartCapacity] = useState(parseInt(searchParams.get('cap')) || 50);
-  const [arrivalRate, setArrivalRate] = useState(40); // 40% arrivals, 60% retrievals
-  const [grid, setGrid] = useState([]); 
-  const [stats, setStats] = useState({ inbound: 0, outbound: 0, relocs: 0, crashed: false });
+  const [arrivalRate, setArrivalRate] = useState(40);
+  const [speed, setSpeed] = useState(10); 
+
+  // Simulation State
+  const [grid, setGrid] = useState({}); // Key: AISLE_SIDE_X_Y_Z
+  const [shuttles, setShuttles] = useState([]); // 8 per aisle? No, architecture says 1 per Y level total? 
+  // Actually, usually it's per aisle per Y level. But let's stick to 8 per ACTIVE aisle for the UI.
+  const [stats, setStats] = useState({ inbound: 0, outbound: 0, relocs: 0, time: 0 });
   const [logs, setLogs] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(5); 
-  const [activeCells, setActiveCells] = useState({}); 
+  const [activeActions, setActiveActions] = useState({}); // highlights
 
   const simTimer = useRef(null);
 
-  // Initialize Warehouse
+  // Initialize
   const initWarehouse = useCallback(() => {
-    const newGrid = [];
-    const numFilled = Math.floor(TOTAL_SLOTS * (startCapacity / 100));
+    const newGrid = {};
+    const totalSlots = AISLES * SIDES * X_POS * Y_LEVELS * Z_DEPTH;
+    const numFilled = Math.floor(totalSlots * (startCapacity / 100));
     let filled = 0;
 
+    // Empty init
     for (let a = 1; a <= AISLES; a++) {
-      for (let c = 1; c <= COLUMNS; c++) {
-        newGrid.push({ id: `${a}-${c}`, aisle: a, col: c, z1: null, z2: null });
+      for (let s = 1; s <= SIDES; s++) {
+        for (let x = 1; x <= X_POS; x++) {
+          for (let y = 1; y <= Y_LEVELS; y++) {
+            for (let z = 1; z <= Z_DEPTH; z++) {
+              newGrid[`${a}_${s}_${x}_${y}_${z}`] = null;
+            }
+          }
+        }
       }
     }
 
+    // Prefill
     while (filled < numFilled) {
-      const idx = Math.floor(Math.random() * newGrid.length);
-      const cell = newGrid[idx];
-      if (!cell.z1) {
-        cell.z1 = { id: Math.random().toString(36).substr(2, 5) };
+      const a = Math.floor(Math.random() * AISLES) + 1;
+      const s = Math.floor(Math.random() * SIDES) + 1;
+      const x = Math.floor(Math.random() * X_POS) + 1;
+      const y = Math.floor(Math.random() * Y_LEVELS) + 1;
+      
+      // Respect Z-rule (Z=1 must be filled for Z=2)
+      if (!newGrid[`${a}_${s}_${x}_${y}_1`]) {
+        newGrid[`${a}_${s}_${x}_${y}_1`] = { dest: Math.floor(Math.random() * 1000) };
         filled++;
-      } else if (!cell.z2) {
-        cell.z2 = { id: Math.random().toString(36).substr(2, 5) };
+      } else if (!newGrid[`${a}_${s}_${x}_${y}_2`]) {
+        newGrid[`${a}_${s}_${x}_${y}_2`] = { dest: Math.floor(Math.random() * 1000) };
         filled++;
       }
+    }
+
+    // Initialize Shuttles (1 per Y-level for current aisle)
+    const newShuttles = [];
+    for (let y = 1; y <= Y_LEVELS; y++) {
+      newShuttles.push({ y, x: 0, targetX: 0, state: 'idle', task: null });
     }
 
     setGrid(newGrid);
-    setStats({ inbound: 0, outbound: 0, relocs: 0, crashed: false });
-    setLogs([{ type: 'info', msg: `Simulation reset. Capacity: ${startCapacity}%` }]);
-    setActiveCells({});
+    setShuttles(newShuttles);
+    setStats({ inbound: 0, outbound: 0, relocs: 0, time: 0 });
+    setLogs([{ type: 'info', msg: `Silo initialized: 4 Aisles, 8 Levels, 60 Columns.` }]);
     setIsPlaying(false);
   }, [startCapacity]);
 
@@ -82,320 +108,328 @@ export default function VisualizerPage() {
     setLogs(prev => [{ type, msg, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 50));
   };
 
-  // PLACEMENT STRATEGIES
-  const findInboundSlot = (currentGrid) => {
-    const emptyZ1 = currentGrid.filter(c => !c.z1);
-    const emptyZ2 = currentGrid.filter(c => c.z1 && !c.z2);
-    
-    if (algoId === 'zsafe' || algoId === 'pro') {
-      // Prioritize Z=1, then lower columns
-      if (emptyZ1.length > 0) {
-        const sorted = [...emptyZ1].sort((a, b) => (a.col + a.aisle) - (b.col + b.aisle));
-        return { cell: sorted[0], z: 1 };
-      }
-      const sortedZ2 = [...emptyZ2].sort((a, b) => a.col - b.col);
-      return sortedZ2.length > 0 ? { cell: sortedZ2[0], z: 2 } : null;
-    }
-
-    if (algoId === 'column') {
-      // Grouping logic mock: favor even aisles for even columns etc
-      const groupMatch = emptyZ1.find(c => (c.aisle % 2 === c.col % 2));
-      if (groupMatch) return { cell: groupMatch, z: 1 };
-    }
-
-    if (algoId === 'greedy') {
-      // Just pick a random one in current "active" aisle if we had a shuttle concept, 
-      // but here we'll just pick random empty same-aisle as last action if available.
-      const lastActionAisle = 1; // mock
-      const aisleSlot = emptyZ1.find(c => c.aisle === lastActionAisle) || emptyZ2.find(c => c.aisle === lastActionAisle);
-      if (aisleSlot) return { cell: aisleSlot, z: aisleSlot.z1 ? 2 : 1 };
-    }
-
-    // Default Simple: random or first available
-    if (emptyZ1.length > 0) return { cell: emptyZ1[0], z: 1 };
-    if (emptyZ2.length > 0) return { cell: emptyZ2[0], z: 2 };
-    
-    return null;
-  };
-
-  // Perform one simulation tick
-  const tick = useCallback(() => {
-    if (stats.crashed) return;
-
-    let newGrid = [...grid];
-    let newStats = { ...stats };
-    let tempActive = {};
-
-    const isArrival = Math.random() * 100 < arrivalRate;
-
-    if (isArrival) {
-      // --- ARRIVAL LOGIC ---
-      const placement = findInboundSlot(newGrid);
-      if (!placement) {
-        addLog("ARRIVAL FAILED: Warehouse at 100% Capacity!", "warning");
-        return;
-      }
-
-      const { cell, z } = placement;
-      const pallet = { id: Math.random().toString(36).substr(2, 5) };
-      
-      if (z === 1) cell.z1 = pallet;
-      else cell.z2 = pallet;
-
-      newStats.inbound++;
-      tempActive[cell.id] = 'arrival';
-      addLog(`Inbound pallet placed at ${cell.id} (Z${z})`, "success");
-
-    } else {
-      // --- RETRIEVAL LOGIC ---
-      const occupied = newGrid.filter(c => c.z1 || c.z2);
-      if (occupied.length === 0) return;
-
-      const targetCell = occupied[Math.floor(Math.random() * occupied.length)];
-      const targetZ = targetCell.z2 ? 2 : 1;
-      tempActive[targetCell.id] = 'retrieve';
-
-      // Check for Z-Block
-      if (targetZ === 2 && targetCell.z1) {
-        // Relocate Z1 box first
-        const relocateSpot = findInboundSlot(newGrid.filter(c => c.id !== targetCell.id));
-        if (!relocateSpot) {
-          newStats.crashed = true;
-          addLog(`CRASH: No relocation space for ${algoId.toUpperCase()}!`, "error");
-          setStats(newStats);
-          setIsPlaying(false);
-          tempActive[targetCell.id] = 'error';
-          setActiveCells(tempActive);
-          return;
+  // PLACEMENT STRATEGY (Simplified for visualizer)
+  const findSlot = useCallback((currentGrid) => {
+    // Basic search: Find empty Z=1 first, then Z=2
+    for (let x = 1; x <= X_POS; x++) {
+      for (let y = 1; y <= Y_LEVELS; y++) {
+        for (let s = 1; s <= SIDES; s++) {
+          const key1 = `${activeAisle}_${s}_${x}_${y}_1`;
+          if (!currentGrid[key1]) return { s, x, y, z: 1 };
+          
+          const key2 = `${activeAisle}_${s}_${x}_${y}_2`;
+          if (!currentGrid[key2]) return { s, x, y, z: 2 };
         }
-
-        const { cell: destCell, z: destZ } = relocateSpot;
-        const palletToMove = targetCell.z1;
-        targetCell.z1 = null;
-        if (destZ === 1) destCell.z1 = palletToMove;
-        else destCell.z2 = palletToMove;
-
-        newStats.relocs++;
-        tempActive[targetCell.id] = 'relocate_src';
-        tempActive[destCell.id] = 'relocate_dest';
-        addLog(`Z-Block! Relocated ${targetCell.id} to ${destCell.id}`, "warning");
       }
-
-      // Retrieve
-      if (targetZ === 2) targetCell.z2 = null;
-      else targetCell.z1 = null;
-      newStats.outbound++;
-      addLog(`Retrieved pallet from ${targetCell.id} (Z${targetZ})`, "info");
     }
+    return null;
+  }, [activeAisle]);
 
-    setGrid(newGrid);
-    setStats(newStats);
-    setActiveCells(tempActive);
+  // Simulation Tick
+  const tick = useCallback(() => {
+    let nextGrid = { ...grid };
+    let nextShuttles = [...shuttles];
+    let nextStats = { ...stats };
+    let highlights = {};
 
-    setTimeout(() => setActiveCells({}), (1000 / speed) * 0.8);
+    // 1. Move shuttles
+    nextShuttles.forEach(s => {
+      if (s.state === 'moving' || s.state === 'working') {
+        if (s.x < s.targetX) s.x = Math.min(s.x + 1, s.targetX);
+        else if (s.x > s.targetX) s.x = Math.max(s.x - 1, s.targetX);
 
-  }, [grid, stats, algoId, speed, arrivalRate]);
+        if (s.x === s.targetX) {
+          // Completed movement
+          if (s.state === 'working') {
+            const task = s.task;
+            if (task.type === 'inbound') {
+              nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = { dest: task.dest };
+              nextStats.inbound++;
+              addLog(`Placed inbound at ${task.x}, Level ${task.y}`, 'success');
+              highlights[`${task.x}_${task.y}`] = 'arrival';
+            } else if (task.type === 'outbound') {
+              nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = null;
+              nextStats.outbound++;
+              addLog(`Retrieved box from ${task.x}, Level ${task.y}`, 'info');
+              highlights[`${task.x}_${task.y}`] = 'retrieve';
+            }
+            s.state = 'idle';
+            s.task = null;
+          } else {
+            s.state = 'working'; // Start working at target
+          }
+        }
+      }
+    });
 
-  // Timer loop
+    // 2. Assign new tasks to idle shuttles
+    nextShuttles.forEach(s => {
+      if (s.state === 'idle') {
+        const isArrival = Math.random() * 100 < arrivalRate;
+        if (isArrival) {
+          const slot = findSlot(nextGrid);
+          if (slot) {
+            s.state = 'moving';
+            s.targetX = slot.x;
+            s.task = { type: 'inbound', ...slot, dest: Math.floor(Math.random() * 1000) };
+          }
+        } else {
+          // Find an occupied slot in this shuttle's Y level
+          const occupied = [];
+          for (let side = 1; side <= SIDES; side++) {
+            for (let x = 1; x <= X_POS; x++) {
+              if (nextGrid[`${activeAisle}_${side}_${x}_${s.y}_2`]) occupied.push({ s: side, x, y: s.y, z: 2 });
+              else if (nextGrid[`${activeAisle}_${side}_${x}_${s.y}_1`]) occupied.push({ s: side, x, y: s.y, z: 1 });
+            }
+          }
+          if (occupied.length > 0) {
+            const target = occupied[Math.floor(Math.random() * occupied.length)];
+            s.state = 'moving';
+            s.targetX = target.x;
+            s.task = { type: 'outbound', ...target };
+          }
+        }
+      }
+    });
+
+    setGrid(nextGrid);
+    setShuttles(nextShuttles);
+    setStats(nextStats);
+    setActiveActions(highlights);
+    
+    // Auto-clear highlights
+    setTimeout(() => setActiveActions({}), (1000 / speed) * 0.5);
+
+  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlot]);
+
   useEffect(() => {
-    if (isPlaying && !stats.crashed) {
+    if (isPlaying) {
       simTimer.current = setInterval(tick, 1000 / speed);
     } else {
       clearInterval(simTimer.current);
     }
     return () => clearInterval(simTimer.current);
-  }, [isPlaying, speed, tick, stats.crashed]);
+  }, [isPlaying, speed, tick]);
+
+  // View Helpers
+  const getCellData = (x, y) => {
+    const z1 = grid[`${activeAisle}_${activeSide}_${x}_${y}_1`];
+    const z2 = grid[`${activeAisle}_${activeSide}_${x}_${y}_2`];
+    return { z1, z2 };
+  };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-300 font-sans p-6 flex flex-col h-screen overflow-hidden">
+    <div className="min-h-screen bg-[#020617] text-slate-300 font-sans flex flex-col h-screen overflow-hidden">
       
       {/* Header */}
-      <header className="flex items-center justify-between mb-6 shrink-0">
-        <div className="flex items-center gap-4">
-          <Link to="/" className="p-2 hover:bg-slate-800 rounded-lg transition-colors border border-slate-800">
+      <header className="px-8 py-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-950/80 backdrop-blur-md">
+        <div className="flex items-center gap-6">
+          <Link to="/" className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400">
             <ChevronLeft className="w-5 h-5" />
           </Link>
-          <div>
-            <h1 className="text-xl font-bold text-slate-50 flex items-center gap-2">
-              <Warehouse className="w-5 h-5 text-indigo-400" />
-              Live Warehouse Visualizer
+          <div className="space-y-0.5">
+            <h1 className="text-lg font-bold text-slate-50 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-indigo-400" />
+              Silo Visualizer: <span className="text-indigo-400">Aisle {activeAisle}</span>
             </h1>
-            <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-0.5">
-              Arrivals & Retrievals (Bi-directional)
-            </p>
+            <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+              <span>Shuttle-per-Level Architecture</span>
+              <span className="w-1 h-1 rounded-full bg-slate-700" />
+              <span>Real-time X/Y/Z Logic</span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-6 bg-slate-900/50 border border-slate-800 rounded-xl px-6 py-2 backdrop-blur-sm">
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-slate-500 uppercase">Inbound</p>
-            <p className="text-lg font-mono font-bold text-indigo-400 leading-none mt-1">{stats.inbound}</p>
-          </div>
-          <div className="w-px h-8 bg-slate-800" />
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-slate-500 uppercase">Outbound</p>
-            <p className="text-lg font-mono font-bold text-slate-100 leading-none mt-1">{stats.outbound}</p>
-          </div>
-          <div className="w-px h-8 bg-slate-800" />
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-slate-500 uppercase">Relocations</p>
-            <p className="text-lg font-mono font-bold text-orange-400 leading-none mt-1">{stats.relocs}</p>
-          </div>
-          <div className="w-px h-8 bg-slate-800" />
-          <div className="text-center">
-            <p className="text-[10px] font-bold text-slate-500 uppercase">Occupancy</p>
-            <p className={cn(
-              "text-lg font-mono font-bold leading-none mt-1",
-              (grid.filter(c => c.z1).length + grid.filter(c => c.z2).length) / TOTAL_SLOTS > 0.9 ? "text-rose-400" : "text-emerald-400"
-            )}>
-              {((grid.filter(c => c.z1).length + grid.filter(c => c.z2).length) / TOTAL_SLOTS * 100).toFixed(1)}%
-            </p>
-          </div>
+        <div className="flex items-center gap-8 px-6 py-2 bg-slate-900/50 border border-slate-800 rounded-xl">
+          {[
+            { label: 'Inbound', val: stats.inbound, color: 'text-blue-400' },
+            { label: 'Outbound', val: stats.outbound, color: 'text-slate-100' },
+            { label: 'Relocs', val: stats.relocs, color: 'text-orange-400' },
+          ].map(s => (
+            <div key={s.label} className="text-center">
+              <p className="text-[10px] font-bold text-slate-500 uppercase">{s.label}</p>
+              <p className={cn("text-xl font-mono font-bold leading-none mt-1", s.color)}>{s.val}</p>
+            </div>
+          ))}
         </div>
       </header>
 
-      <div className="flex gap-6 flex-1 overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
         
-        {/* Main Grid Area */}
-        <div className="flex-1 bg-slate-950/50 border border-slate-800 rounded-2xl overflow-auto p-8 relative scrollbar-hide">
-          <div className="grid grid-cols-20 gap-2 min-w-[1000px]">
-            {grid.map((cell) => {
-              const activeType = activeCells[cell.id];
-              return (
-                <div 
-                  key={cell.id}
-                  className={cn(
-                    "aspect-square rounded-md border border-slate-800 flex items-center justify-center transition-all duration-200 relative",
-                    !cell.z1 && "bg-slate-900/20 opacity-40",
-                    cell.z1 && !cell.z2 && "bg-indigo-900/20 border-indigo-500/30",
-                    cell.z1 && cell.z2 && "bg-indigo-500/20 border-indigo-500/50",
-                    activeType === 'retrieve' && "bg-yellow-500/40 border-yellow-400 scale-110 z-10",
-                    activeType === 'arrival' && "bg-blue-500/60 border-blue-400 scale-110 z-10",
-                    activeType === 'relocate_src' && "bg-orange-500/40 border-orange-400 scale-110 z-10",
-                    activeType === 'relocate_dest' && "bg-emerald-500/40 border-emerald-400 scale-110 z-10",
-                    activeType === 'error' && "bg-rose-500/40 border-rose-400 scale-110 z-10"
-                  )}
-                >
-                  {cell.z2 && <div className="w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]" />}
-                  {!cell.z2 && cell.z1 && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50" />}
-                </div>
-              );
-            })}
-          </div>
-          
-          {stats.crashed && (
-            <div className="absolute inset-0 bg-rose-500/5 backdrop-blur-[2px] flex items-center justify-center">
-              <div className="bg-rose-500 text-white px-8 py-4 rounded-xl shadow-2xl font-bold flex items-center gap-3 animate-bounce">
-                <AlertTriangle className="w-6 h-6" />
-                SIMULATION CRASHED: NO SPACE TO RELOCATE
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar Controls */}
-        <div className="w-80 flex flex-col gap-6 shrink-0 overflow-y-auto pr-2">
+        {/* Sidebar Left: Navigation & Controls */}
+        <aside className="w-80 border-r border-slate-800 flex flex-col p-6 space-y-8 bg-slate-950/50 shrink-0">
           
           <section className="space-y-4">
-            <div className="flex items-center gap-2 text-slate-100 font-bold text-sm">
-              <Settings2 className="w-4 h-4 text-indigo-400" />
-              Simulation Settings
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <Navigation className="w-4 h-4" /> Navigation
             </div>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Algorithm</label>
-                <select 
-                  value={algoId} onChange={(e) => setAlgoId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
-                >
-                  {ALGORITHMS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Starting Capacity ({startCapacity}%)</label>
-                <input 
-                  type="range" min="0" max="95" step="5"
-                  value={startCapacity} onChange={(e) => setStartCapacity(parseInt(e.target.value))}
-                  className="w-full accent-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5 flex justify-between">
-                  Arrival Rate <span>{arrivalRate}%</span>
-                </label>
-                <input 
-                  type="range" min="0" max="100" 
-                  value={arrivalRate} onChange={(e) => setArrivalRate(parseInt(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-                <div className="flex justify-between text-[8px] font-bold text-slate-600 mt-1 uppercase">
-                  <span>Pure Retrieval</span>
-                  <span>Pure Arrival</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-4 gap-2">
+              {[1,2,3,4].map(a => (
                 <button 
-                  onClick={() => setIsPlaying(!isPlaying)} disabled={stats.crashed}
-                  className={cn("py-2 rounded-lg font-bold flex items-center justify-center gap-2 transition-all", isPlaying ? "bg-slate-800" : "bg-indigo-600 text-white")}
+                  key={a}
+                  onClick={() => setActiveAisle(a)}
+                  className={cn(
+                    "py-2 rounded-lg font-bold text-sm border transition-all",
+                    activeAisle === a ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-900 border-slate-800 hover:border-slate-700"
+                  )}
                 >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  {isPlaying ? 'Pause' : 'Start'}
+                  A{a}
                 </button>
-                <button onClick={initWarehouse} className="py-2 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold flex items-center justify-center gap-2">
-                  <RotateCcw className="w-4 h-4" /> Reset
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[1,2].map(s => (
+                <button 
+                  key={s}
+                  onClick={() => setActiveSide(s)}
+                  className={cn(
+                    "py-2 rounded-lg font-bold text-xs border transition-all uppercase",
+                    activeSide === s ? "bg-slate-700 border-slate-600 text-white" : "bg-slate-900 border-slate-800"
+                  )}
+                >
+                  {s === 1 ? 'Left Side' : 'Right Side'}
                 </button>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Speed ({speed} ticks/s)</label>
-                <input 
-                  type="range" min="1" max="60" value={speed} onChange={(e) => setSpeed(parseInt(e.target.value))}
-                  className="w-full accent-indigo-500"
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Live Log */}
-          <section className="flex-1 flex flex-col overflow-hidden min-h-0">
-            <div className="flex items-center gap-2 text-slate-100 font-bold text-sm mb-4">
-              <ListTodo className="w-4 h-4 text-emerald-400" />
-              Event Log
-            </div>
-            <div className="flex-1 bg-slate-950/80 border border-slate-900 rounded-xl overflow-y-auto p-4 space-y-3 font-mono text-[10px] scrollbar-hide">
-              {logs.map((log, i) => (
-                <div key={i} className={cn(
-                  "flex gap-3 animate-in slide-in-from-right-2 duration-300",
-                  log.type === 'warning' && "text-orange-400",
-                  log.type === 'error' && "text-rose-400 font-bold",
-                  log.type === 'success' && "text-blue-400",
-                  log.type === 'info' && "text-slate-400"
-                )}>
-                  <span className="opacity-30 shrink-0">{log.time}</span>
-                  <span className="break-words">
-                    {log.msg.includes('Inbound') && <ArrowDownLeft className="w-3 h-3 inline mr-1" />}
-                    {log.msg.includes('Retrieved') && <ArrowUpRight className="w-3 h-3 inline mr-1" />}
-                    {log.msg}
-                  </span>
-                </div>
               ))}
             </div>
           </section>
 
-          {/* Legend */}
-          <section className="bg-slate-900/30 border border-slate-800 rounded-xl p-4 grid grid-cols-2 gap-2 text-[8px] font-bold uppercase tracking-wider">
-            <div className="flex items-center gap-2"><div className="w-2 h-2 rounded bg-blue-500" /> Inbound</div>
-            <div className="flex items-center gap-2"><div className="w-2 h-2 rounded bg-yellow-400" /> Outbound</div>
-            <div className="flex items-center gap-2"><div className="w-2 h-2 rounded bg-orange-400" /> Relocate</div>
-            <div className="flex items-center gap-2"><div className="w-2 h-2 rounded bg-emerald-400" /> Destination</div>
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <Settings2 className="w-4 h-4" /> Control Center
+            </div>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className={cn("py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95", isPlaying ? "bg-slate-800" : "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20")}
+                >
+                  {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                  {isPlaying ? 'Pause' : 'Start'}
+                </button>
+                <button onClick={initWarehouse} className="py-3 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95">
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2 flex justify-between">
+                  Sim Speed <span>{speed}x</span>
+                </label>
+                <input type="range" min="1" max="100" value={speed} onChange={e => setSpeed(parseInt(e.target.value))} className="w-full accent-indigo-500" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2 flex justify-between">
+                  Arrival Rate <span>{arrivalRate}%</span>
+                </label>
+                <input type="range" min="0" max="100" value={arrivalRate} onChange={e => setArrivalRate(parseInt(e.target.value))} className="w-full accent-blue-500" />
+              </div>
+            </div>
           </section>
 
-        </div>
+          <section className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+              <ListTodo className="w-4 h-4" /> Activity Feed
+            </div>
+            <div className="flex-1 bg-slate-950 border border-slate-900 rounded-xl p-4 overflow-y-auto space-y-3 scrollbar-hide font-mono text-[10px]">
+              {logs.map((l, i) => (
+                <div key={i} className={cn("flex gap-2 animate-in slide-in-from-right-2 duration-300", l.type === 'success' ? 'text-blue-400' : l.type === 'warning' ? 'text-orange-400' : 'text-slate-500')}>
+                  <span className="opacity-30">{l.time}</span>
+                  <span>{l.msg}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
 
+        {/* Main Content: Side View Grid */}
+        <main className="flex-1 p-8 overflow-hidden flex flex-col bg-slate-950">
+          <div className="flex-1 relative border border-slate-800 rounded-3xl overflow-auto bg-slate-900/20 backdrop-blur-sm p-8 scrollbar-hide">
+            
+            {/* Coordinate Axis Labels */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-700 uppercase tracking-[0.5em]">Length (X-Position 1-60)</div>
+            <div className="absolute left-2 top-1/2 -rotate-90 origin-left -translate-y-1/2 text-[10px] font-bold text-slate-700 uppercase tracking-[0.5em]">Height (Y-Level 1-8)</div>
+
+            <div className="inline-grid gap-y-2 select-none" style={{ gridTemplateColumns: '60px repeat(60, 40px)' }}>
+              
+              {/* Grid Rows (Y-Levels) */}
+              {Array.from({ length: Y_LEVELS }).map((_, yIdx) => {
+                const y = Y_LEVELS - yIdx; // Show Y=8 at top
+                const shuttle = shuttles.find(s => s.y === y);
+                
+                return (
+                  <React.Fragment key={y}>
+                    {/* Y-Label */}
+                    <div className="flex items-center justify-center font-bold text-xs text-slate-600 border-r border-slate-800 mr-4">L{y}</div>
+                    
+                    {/* Columns (X-Positions) */}
+                    {Array.from({ length: X_POS }).map((_, xIdx) => {
+                      const x = xIdx + 1;
+                      const { z1, z2 } = getCellData(x, y);
+                      const action = activeActions[`${x}_${y}`];
+                      const isShuttleHere = shuttle && Math.floor(shuttle.x) === x;
+
+                      return (
+                        <div 
+                          key={`${x}_${y}`}
+                          className={cn(
+                            "w-8 h-10 border border-slate-800/50 rounded-sm relative transition-all duration-300",
+                            !z1 && "bg-slate-900/10",
+                            z1 && !z2 && "bg-indigo-900/20",
+                            z1 && z2 && "bg-indigo-500/30 shadow-[inset_0_0_10px_rgba(99,102,241,0.2)]",
+                            action === 'arrival' && "bg-blue-500/60 border-blue-400 scale-110 z-10",
+                            action === 'retrieve' && "bg-yellow-500/60 border-yellow-400 scale-110 z-10",
+                            isShuttleHere && "ring-2 ring-indigo-400/50 ring-offset-2 ring-offset-slate-950"
+                          )}
+                        >
+                          {/* Z-Depth Indicator */}
+                          {z1 && <div className={cn("absolute bottom-1 left-1 right-1 h-2 rounded-full", z2 ? "bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]" : "bg-indigo-500/30")} />}
+                          
+                          {/* Shuttle Overlay */}
+                          {isShuttleHere && (
+                            <div className="absolute -top-1 -left-1 -right-1 -bottom-1 border-2 border-indigo-400 rounded-md bg-indigo-400/20 flex items-center justify-center animate-pulse z-20">
+                              <Box className="w-3 h-3 text-white" />
+                            </div>
+                          )}
+
+                          {/* X-Coordinate Tooltip (Hover) */}
+                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 hover:opacity-100 bg-slate-800 text-[8px] font-bold px-1 rounded transition-opacity pointer-events-none">X{x}</div>
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+
+              {/* X-Axis Footer Labels */}
+              <div /> {/* Spacer for Y-labels column */}
+              {Array.from({ length: X_POS }).map((_, i) => (
+                <div key={i} className="text-[8px] font-bold text-slate-700 text-center mt-2">{i+1}</div>
+              ))}
+            </div>
+          </div>
+
+          {/* Visual Legend */}
+          <footer className="mt-6 flex items-center justify-center gap-12 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900/30 py-4 rounded-2xl border border-slate-800/50">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-sm bg-indigo-900/40 border border-indigo-500/30" />
+              <span>Front Occupied (Z=1)</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-sm bg-indigo-500/60 shadow-[0_0_8px_rgba(99,102,241,0.4)]" />
+              <span>Double Stack (Z=2)</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-4 border-2 border-indigo-400 rounded-sm bg-indigo-400/20" />
+              <span>Active Shuttle</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-sm bg-blue-500/60" />
+              <span>Inbound Action</span>
+            </div>
+          </footer>
+        </main>
       </div>
     </div>
   );
