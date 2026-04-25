@@ -333,6 +333,100 @@ class ZSafeSimpleAlgorithm(BaseAlgorithm):
                 return [item[1] for item in items[:12]]
         return None
 
+class MixAlgorithm(BaseAlgorithm):
+    """
+    Combines ColumnGrouping (dedicated columns per destination for parallel
+    shuttle retrieval) with ZSafe (Z-depth destination compatibility).
+
+    STORAGE:
+    1. Try to place in an already-assigned column for this destination.
+       Within the column, fill Z=1 first, then Z=2 (safe because same dest).
+    2. If all assigned columns are full, find a new empty column and assign it.
+    3. Fallback: if no empty columns remain, sequential search with Z-safe gate
+       (only use Z=2 if Z=1 has the same destination).
+
+    RETRIEVAL:
+    Groups by destination, sorts by Z ascending (Z=1 before Z=2) then by X
+    ascending, guaranteeing zero relocations and clearing columns efficiently.
+    """
+    def __init__(self):
+        self.dest_columns = {}  # destination -> list of (aisle, side, x)
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        if dest not in self.dest_columns:
+            self.dest_columns[dest] = []
+
+        # 1. Try existing assigned columns for this destination
+        for col in self.dest_columns[dest]:
+            aisle, side, x = col
+            for y in range(1, warehouse.num_y + 1):
+                if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                    return (aisle, side, x, y, 1)
+                elif warehouse.is_slot_empty(aisle, side, x, y, 2):
+                    return (aisle, side, x, y, 2)
+
+        # 2. Find a new empty column and assign it
+        new_col = None
+        for x in range(1, warehouse.num_x + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for side in range(1, warehouse.num_sides + 1):
+                    # Check column is completely empty
+                    is_empty = True
+                    for y in range(1, warehouse.num_y + 1):
+                        if not warehouse.is_slot_empty(aisle, side, x, y, 1) or \
+                           not warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            is_empty = False
+                            break
+                    if not is_empty:
+                        continue
+                    # Check column is not assigned to another destination
+                    is_assigned = False
+                    for cols in self.dest_columns.values():
+                        if (aisle, side, x) in cols:
+                            is_assigned = True
+                            break
+                    if not is_assigned:
+                        new_col = (aisle, side, x)
+                        break
+                if new_col:
+                    break
+            if new_col:
+                break
+
+        if new_col:
+            self.dest_columns[dest].append(new_col)
+            aisle, side, x = new_col
+            return (aisle, side, x, 1, 1)
+
+        # 3. Fallback: sequential search with Z-safe gate
+        for x in range(1, warehouse.num_x + 1):
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                            return (aisle, side, x, y, 1)
+                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                            if z1_box and z1_box.get('destination') == dest:
+                                return (aisle, side, x, y, 2)
+        return None
+
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        for dest, items in dest_groups.items():
+            if len(items) >= 12:
+                # Sort by Z ascending (Z=1 first), then by X ascending
+                items.sort(key=lambda t: (t[0][4], t[0][2]))
+                return [item[1] for item in items[:12]]
+        return None
+
 class DestinationZoneAlgorithm(BaseAlgorithm):
     """
     Zone-based storage algorithm.
