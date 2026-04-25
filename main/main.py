@@ -14,11 +14,13 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-<<<<<<< HEAD
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
-=======
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedProAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
->>>>>>> 2de55c9ea97d4ff77a120c9a79e6d0aac2ff182c
+from controllers.algorithm.algorithms import (
+    SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, 
+    VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, 
+    ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedYSafeAlgorithm, 
+    ZSafeRWeightedYSafeAlgorithm, ZSafeWeightedProAlgorithm, 
+    DestinationZoneAlgorithm, MaturityFirstAlgorithm
+)
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
@@ -28,15 +30,11 @@ AVAILABLE_ALGORITHMS = [
     ("Velocity Column", VelocityColumnAlgorithm),
     ("Velocity Simple", VelocitySimpleAlgorithm),
     ("Z-Safe Simple", ZSafeSimpleAlgorithm),
-<<<<<<< HEAD
-    ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
-    ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
-    ("ZSafe-R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
-=======
     ("Z-Safe Pro", ZSafeProAlgorithm),
     ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
+    ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
+    ("Z-Safe R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
     ("Z-Weighted Pro", ZSafeWeightedProAlgorithm),
->>>>>>> 2de55c9ea97d4ff77a120c9a79e6d0aac2ff182c
     ("Destination Zones", DestinationZoneAlgorithm),
     ("Maturity First", MaturityFirstAlgorithm),
 ]
@@ -222,12 +220,12 @@ def run_sandbox():
     # Sort by simulation capacity, then time
     results.sort(key=lambda r: (r["cap_pct"], r["sim_time"]))
     
-    header = f"{'Algorithm':<20} | {'Cap %':<5} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Z-Blocks':<9} | {'Real Time':<10}"
+    header = f"{'Algorithm':<25} | {'Cap %':<5} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Z-Blocks':<9} | {'Real Time':<10}"
     print(header)
     print("-" * len(header))
     
     for r in results:
-        print(f"{r['name']:<20} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
+        print(f"{r['name']:<25} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
         
     print("\nSandbox execution finished.")
 
