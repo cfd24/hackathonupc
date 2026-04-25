@@ -18,6 +18,9 @@ class SimpleAlgorithm(BaseAlgorithm):
                     for side in range(1, warehouse.num_sides + 1):
                         for z in range(1, warehouse.num_z + 1):
                             if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                # Respect Z=1 before Z=2
+                                if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                    continue
                                 return (aisle, side, x, y, z)
         return None # No space
 
@@ -28,13 +31,13 @@ class SimpleAlgorithm(BaseAlgorithm):
             dest = box_data.get('destination')
             if dest not in dest_groups:
                 dest_groups[dest] = []
-            dest_groups[dest].append(coords)
+            dest_groups[dest].append(box_data['code'])
         
         # Find destinations with 12+ boxes
-        for dest, coords_list in dest_groups.items():
-            if len(coords_list) >= 12:
-                # Return the first 12 boxes
-                return coords_list[:12]
+        for dest, code_list in dest_groups.items():
+            if len(code_list) >= 12:
+                # Return the first 12 box codes
+                return code_list[:12]
         
         return None
 
