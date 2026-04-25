@@ -82,11 +82,13 @@ hackathonupc/
 **Explicación detallada:** Carga un flujo de cajas (códigos de 20 dígitos), intenta almacenarlas usando el algoritmo provisto y gestiona la formación de pallets (comprobando el límite de 8 pallets activos). Al final, contabiliza el tiempo (`total_time = max(shuttles_time)`) y calcula las métricas de éxito (Total Time, Throughput, Full Pallets %).
 
 ### `controllers/algorithm/algorithms.py`
-**Resumen de alto nivel:** Define la interfaz de los algoritmos y proporciona una implementación base `SimpleAlgorithm`.
+**Resumen de alto nivel:** Define la interfaz de los algoritmos y proporciona varias implementaciones estratégicas.
 
 **Explicación detallada:**
 - **`BaseAlgorithm`**: Interfaz con `get_storage_location` y `get_retrieval_plan`.
-- **`SimpleAlgorithm`**: Un algoritmo muy simple que coloca cajas en el primer hueco que encuentra (`x=1`, `y=1`...) y recupera pallets ciegamente cuando llega a 12 cajas, sin optimización de tiempos. Sirve como *baseline*.
+- **`SimpleAlgorithm`**: Coloca cajas secuencialmente en el primer hueco disponible y recupera pallets ciegamente. Sirve como *baseline*.
+- **`DistanceGreedyAlgorithm`**: Optimiza la colocación inmediata buscando la celda más cercana al robot actual para minimizar tiempo de guardado, aunque genera desorden a largo plazo.
+- **`ColumnGroupingAlgorithm`**: Estrategia de alto rendimiento que asigna columnas verticales enteras a destinos específicos. Esto paraleliza masivamente la recuperación de pallets entre varios shuttles y elimina las penalizaciones de la regla de profundidad (Z).
 
 ### `main/main.py`
 **Resumen de alto nivel:** Sandbox de prueba de rendimiento.

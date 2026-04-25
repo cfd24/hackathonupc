@@ -14,12 +14,13 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
     ("Simple Baseline", SimpleAlgorithm),
     ("Distance Greedy", DistanceGreedyAlgorithm),
+    ("Column Grouping", ColumnGroupingAlgorithm),
 ]
 
 # --- SIMULATION CONFIGURATION ---
