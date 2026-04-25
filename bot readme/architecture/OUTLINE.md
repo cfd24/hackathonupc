@@ -132,15 +132,18 @@ hackathonupc/
 - **`SimpleAlgorithm`**: Coloca cajas secuencialmente en el primer hueco disponible y recupera pallets ciegamente. Sirve como *baseline*.
 - **`DistanceGreedyAlgorithm`**: Optimiza la colocación inmediata buscando la celda más cercana al robot actual para minimizar tiempo de guardado, aunque genera desorden a largo plazo.
 - **`ColumnGroupingAlgorithm`**: Estrategia de alto rendimiento que asigna columnas verticales enteras a destinos específicos. Esto paraleliza masivamente la recuperación de pallets entre varios shuttles y elimina las penalizaciones de la regla de profundidad (Z).
+- **`VelocityColumnAlgorithm`**: Mejora sobre `ColumnGroupingAlgorithm` que aprende dinámicamente la velocidad (frecuencia) de los destinos. Asigna las columnas más cercanas a la puerta (X=1) a los destinos más frecuentes (Fast) y las columnas del fondo (X=60) a los destinos menos frecuentes (Slow).
+- **`VelocitySimpleAlgorithm`**: Aplica la estrategia dinámica de velocidad (Fast=X=1, Slow=X=60) a la lógica de guardado de `SimpleAlgorithm`.
 
 ### `main/main.py`
 **Resumen de alto nivel:** Sandbox de prueba de rendimiento.
 
 **Explicación detallada:**
 Este script es el entorno de pruebas (*sandbox*). 
-- Genera un flujo de miles de cajas y las envía al simulador iterando sobre todos los algoritmos listados en `AVAILABLE_ALGORITHMS`
-- **Pide el tiempo de empaquetado** como input al usuario (validando que sea entero >= 0)
-- **Pide el número de destinos** y genera pesos aleatorios para repartir las cajas entre esos destinos
-- El flujo de cajas es no determinista por defecto: cada ejecución crea pesos y códigos nuevos
-- Pasa el tiempo de empaquetado al simulador
-- Finalmente, pinta una tabla con los resultados (tiempo, pallets enviados y throughput) de todos los algoritmos, permitiendo compararlos
+- Genera flujos de miles de cajas y las envía al simulador iterando sobre todos los algoritmos listados en `AVAILABLE_ALGORITHMS`.
+- **Benchmarking de Capacidad:** Ejecuta cada algoritmo en 4 escenarios distintos: con el almacén vacío (0%), y pre-llenado al 25%, 50% y 75% de su capacidad. Esto permite medir cómo se degradan los algoritmos cuando el espacio es limitado.
+- **Pide el tiempo de empaquetado** como input al usuario (validando que sea entero >= 0).
+- **Pide el número de destinos** y genera pesos aleatorios para repartir las cajas entre esos destinos.
+- El flujo de cajas es no determinista por defecto: cada ejecución crea pesos y códigos nuevos, pero los mismos flujos se usan para todos los algoritmos en una misma ejecución para garantizar una comparativa justa.
+- Pasa el tiempo de empaquetado al simulador.
+- Finalmente, pinta una tabla con los resultados (tiempo, pallets enviados y throughput) de todos los algoritmos en cada nivel de capacidad, permitiendo compararlos.

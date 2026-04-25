@@ -14,13 +14,15 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
     ("Simple Baseline", SimpleAlgorithm),
     ("Distance Greedy", DistanceGreedyAlgorithm),
     ("Column Grouping", ColumnGroupingAlgorithm),
+    ("Velocity Column", VelocityColumnAlgorithm),
+    ("Velocity Simple", VelocitySimpleAlgorithm),
 ]
 
 # --- SIMULATION CONFIGURATION ---
@@ -118,6 +120,8 @@ def run_sandbox():
     
     # Configuration
     NUM_BOXES = 1000
+    TOTAL_CAPACITY = 4 * 2 * 60 * 8 * 2  # 7680
+    CAPACITIES = [0, 25, 50, 75]
     rng = random.Random()
     destination_weights = generate_destination_weights(num_destinations, rng)
     
@@ -125,7 +129,12 @@ def run_sandbox():
     for destination, weight in destination_weights.items():
         print(f"  {destination}: {weight * 100:.2f}%")
     
-    print(f"\nGenerating {NUM_BOXES} boxes for testing...")
+    print("\nGenerating box streams for testing...")
+    prefill_streams = {}
+    for cap_pct in CAPACITIES:
+        num_prefill = int(TOTAL_CAPACITY * (cap_pct / 100.0))
+        prefill_streams[cap_pct] = generate_box_stream(num_prefill, destination_weights, rng)
+        
     test_stream = generate_box_stream(NUM_BOXES, destination_weights, rng)
     
     results = []
@@ -133,43 +142,58 @@ def run_sandbox():
     for algo_name, AlgoClass in selected_algorithms:
         print(f"\n[RUNNING] Algorithm: {algo_name}")
         
-        # Instantiate fresh algorithm and simulator
-        algo = AlgoClass()
-        sim = Simulator(algo, packing_time=packing_time)
-        
-        start_real_time = time.time()
-        
-        # We suppress the simulator's noisy print metrics to keep the sandbox clean
-        # Instead, we will extract the data manually
-        import contextlib, io
-        with contextlib.redirect_stdout(io.StringIO()):
-            try:
-                arrival_interval = 3600.0 / BOXES_PER_HOUR
-                sim.run(test_stream, real_time=False, arrival_interval=arrival_interval)
-                error = None
-            except Exception as e:
-                error = str(e)
-                
-        real_duration = time.time() - start_real_time
-        
-        if error:
-            print(f"  -> CRASHED: {error}")
-            continue
+        for cap_pct in CAPACITIES:
+            # Instantiate fresh algorithm and simulator
+            algo = AlgoClass()
+            sim = Simulator(algo, packing_time=packing_time)
             
-        hours = sim.total_time / 3600
-        throughput = sim.boxes_processed / hours if hours > 0 else 0
-        pallet_pct = (sim.sent_pallets * 12 / sim.boxes_processed * 100) if sim.boxes_processed > 0 else 0
-        
-        results.append({
-            "name": algo_name,
-            "sim_time": sim.total_time,
-            "processed": sim.boxes_processed,
-            "pallets": sim.sent_pallets,
-            "throughput": throughput,
-            "pallet_pct": pallet_pct,
-            "real_duration": real_duration
-        })
-        print("  -> Completed successfully.")
+            # 1. Prefill the warehouse
+            if cap_pct > 0:
+                for code in prefill_streams[cap_pct]:
+                    box_data = sim.parse_box_code(code)
+                    location = algo.get_storage_location(box_data, sim.warehouse)
+                    if location:
+                        sim.warehouse.store_box(*location, box_data, check_z=False)
+                
+                # Reset simulation clocks & metrics so benchmark is isolated
+                sim.warehouse.global_time = 0.0
+                for y in range(1, sim.warehouse.num_y + 1):
+                    sim.warehouse.shuttles_time[y] = 0.0
+                    sim.warehouse.shuttles_x[y] = 0
+            
+            start_real_time = time.time()
+            
+            # We suppress the simulator's noisy print metrics to keep the sandbox clean
+            import contextlib, io
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    arrival_interval = 3600.0 / BOXES_PER_HOUR
+                    sim.run(test_stream, real_time=False, arrival_interval=arrival_interval)
+                    error = None
+                except Exception as e:
+                    error = str(e)
+                    
+            real_duration = time.time() - start_real_time
+            
+            if error:
+                print(f"  -> {cap_pct:2d}% Cap CRASHED: {error}")
+                continue
+                
+            hours = sim.total_time / 3600
+            throughput = sim.boxes_processed / hours if hours > 0 else 0
+            pallet_pct = (sim.sent_pallets * 12 / sim.boxes_processed * 100) if sim.boxes_processed > 0 else 0
+            
+            results.append({
+                "name": algo_name,
+                "cap_pct": cap_pct,
+                "sim_time": sim.total_time,
+                "processed": sim.boxes_processed,
+                "pallets": sim.sent_pallets,
+                "throughput": throughput,
+                "pallet_pct": pallet_pct,
+                "real_duration": real_duration
+            })
+            print(f"  -> {cap_pct:2d}% Cap Completed successfully.")
 
     # Print Comparative Benchmark
     print_banner("Benchmark Results")
@@ -177,15 +201,15 @@ def run_sandbox():
         print("No algorithms completed successfully.")
         return
         
-    # Sort by simulation time (lower is better)
-    results.sort(key=lambda r: r["sim_time"])
+    # Sort by simulation capacity, then time
+    results.sort(key=lambda r: (r["cap_pct"], r["sim_time"]))
     
-    header = f"{'Algorithm':<20} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Real Time':<10}"
+    header = f"{'Algorithm':<20} | {'Cap %':<5} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Real Time':<10}"
     print(header)
     print("-" * len(header))
     
     for r in results:
-        print(f"{r['name']:<20} | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['real_duration']:<8.2f}s")
+        print(f"{r['name']:<20} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['real_duration']:<8.2f}s")
         
     print("\nSandbox execution finished.")
 

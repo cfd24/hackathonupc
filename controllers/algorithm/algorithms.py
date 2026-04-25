@@ -179,3 +179,124 @@ class ColumnGroupingAlgorithm(BaseAlgorithm):
                 items.sort(key=lambda x: (x[0][4], x[0][2]))
                 return [item[1] for item in items[:12]]
         return None
+
+class VelocityColumnAlgorithm(ColumnGroupingAlgorithm):
+    """
+    Dynamically learns destination frequency from the box stream.
+    Fast destinations get columns from X=1, slow ones from X=60.
+    Inherits retrieval logic from ColumnGroupingAlgorithm.
+    """
+    def __init__(self):
+        super().__init__()
+        self.dest_counts = {}
+        self.total_boxes = 0
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        
+        # Update statistics
+        self.dest_counts[dest] = self.dest_counts.get(dest, 0) + 1
+        self.total_boxes += 1
+        
+        if dest not in self.dest_columns:
+            self.dest_columns[dest] = []
+
+        # Try to find an empty slot in the assigned columns
+        for col in self.dest_columns[dest]:
+            aisle, side, x = col
+            for y in range(1, warehouse.num_y + 1):
+                # Must fill Z=1 before Z=2
+                if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                    return (aisle, side, x, y, 1)
+                elif warehouse.is_slot_empty(aisle, side, x, y, 2):
+                    return (aisle, side, x, y, 2)
+
+        # Need a new column. Determine if Fast or Slow.
+        num_dests = len(self.dest_counts)
+        threshold = 1.0 / num_dests if num_dests > 0 else 0
+        ratio = self.dest_counts[dest] / self.total_boxes
+        
+        is_fast = (ratio >= threshold)
+
+        x_range = range(1, warehouse.num_x + 1) if is_fast else range(warehouse.num_x, 0, -1)
+        
+        new_col = None
+        for x in x_range:
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for side in range(1, warehouse.num_sides + 1):
+                    is_empty = True
+                    for y in range(1, warehouse.num_y + 1):
+                        if not warehouse.is_slot_empty(aisle, side, x, y, 1) or not warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            is_empty = False
+                            break
+                    if not is_empty:
+                        continue
+                    
+                    is_assigned = False
+                    for cols in self.dest_columns.values():
+                        if (aisle, side, x) in cols:
+                            is_assigned = True
+                            break
+                    
+                    if not is_assigned:
+                        new_col = (aisle, side, x)
+                        break
+                if new_col: break
+            if new_col: break
+
+        if new_col:
+            self.dest_columns[dest].append(new_col)
+            aisle, side, x = new_col
+            return (aisle, side, x, 1, 1)
+
+        # Fallback
+        for x in range(1, warehouse.num_x + 1):
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        for z in (1, 2):
+                            if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                    continue
+                                return (aisle, side, x, y, z)
+        return None
+
+class VelocitySimpleAlgorithm(SimpleAlgorithm):
+    """
+    Applies dynamic ABC slotting (front vs back allocation) to the naive SimpleBaseline strategy.
+    Fast destinations search for the first empty slot starting from X=1.
+    Slow destinations search for the first empty slot starting from X=60 down to X=1.
+    Inherits retrieval logic directly from SimpleAlgorithm.
+    """
+    def __init__(self):
+        super().__init__()
+        self.dest_counts = {}
+        self.total_boxes = 0
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        
+        # Update statistics
+        self.dest_counts[dest] = self.dest_counts.get(dest, 0) + 1
+        self.total_boxes += 1
+        
+        num_dests = len(self.dest_counts)
+        threshold = 1.0 / num_dests if num_dests > 0 else 0
+        ratio = self.dest_counts[dest] / self.total_boxes
+        
+        is_fast = (ratio >= threshold)
+        
+        x_range = range(1, warehouse.num_x + 1) if is_fast else range(warehouse.num_x, 0, -1)
+        
+        # Simple strategy: Find the first empty slot in the determined direction
+        for x in x_range:
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        for z in range(1, warehouse.num_z + 1):
+                            if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                # Respect Z=1 before Z=2
+                                if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                    continue
+                                return (aisle, side, x, y, z)
+        return None # No space
