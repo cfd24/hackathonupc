@@ -14,7 +14,11 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
+<<<<<<< HEAD
 from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
+=======
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedProAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
+>>>>>>> 2de55c9ea97d4ff77a120c9a79e6d0aac2ff182c
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
@@ -24,9 +28,15 @@ AVAILABLE_ALGORITHMS = [
     ("Velocity Column", VelocityColumnAlgorithm),
     ("Velocity Simple", VelocitySimpleAlgorithm),
     ("Z-Safe Simple", ZSafeSimpleAlgorithm),
+<<<<<<< HEAD
     ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
     ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
     ("ZSafe-R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
+=======
+    ("Z-Safe Pro", ZSafeProAlgorithm),
+    ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
+    ("Z-Weighted Pro", ZSafeWeightedProAlgorithm),
+>>>>>>> 2de55c9ea97d4ff77a120c9a79e6d0aac2ff182c
     ("Destination Zones", DestinationZoneAlgorithm),
     ("Maturity First", MaturityFirstAlgorithm),
 ]

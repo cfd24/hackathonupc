@@ -333,6 +333,99 @@ class ZSafeSimpleAlgorithm(BaseAlgorithm):
                 return [item[1] for item in items[:12]]
         return None
 
+class ZSafeProAlgorithm(BaseAlgorithm):
+    """
+    Optimized Z-Safe that keeps ZSafeSimple's proven storage strategy
+    but upgrades the retrieval plan.
+
+    STORAGE: identical to ZSafeSimple — sequential scan from X=1, takes Z=1
+    first, only uses Z=2 if Z=1 has the same destination. This keeps boxes
+    packed near the door for minimum shuttle travel.
+
+    RETRIEVAL (3 improvements over ZSafeSimple):
+      1. Pick the destination with 12+ boxes whose average X is LOWEST
+         (closest to door = fastest shuttle travel).
+      2. Among those 12 boxes, prefer complete Z=1+Z=2 pairs from the
+         same slot to avoid leaving orphaned Z=2 boxes behind.
+      3. Sort final selection by Z ascending, then X ascending.
+    """
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+
+        for x in range(1, warehouse.num_x + 1):
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        # Try Z=1 first
+                        if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                            return (aisle, side, x, y, 1)
+
+                        # Try Z=2 only if Z=1 is occupied by the SAME destination
+                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                            if z1_box and z1_box.get('destination') == dest:
+                                return (aisle, side, x, y, 2)
+        return None
+
+    def get_retrieval_plan(self, warehouse):
+        # Group all boxes by destination, keeping coordinates
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        # Find destination with 12+ boxes and lowest average X
+        best_dest = None
+        best_avg_x = float('inf')
+        for dest, items in dest_groups.items():
+            if len(items) >= 12:
+                avg_x = sum(c[2] for c, _ in items) / len(items)
+                if avg_x < best_avg_x:
+                    best_avg_x = avg_x
+                    best_dest = dest
+
+        if best_dest is None:
+            return None
+
+        items = dest_groups[best_dest]
+
+        # Build pair-aware selection: prefer taking both Z=1 and Z=2 from same slot
+        # Group items by their (aisle, side, x, y) position
+        slot_groups = {}
+        for coords, code in items:
+            slot_key = (coords[0], coords[1], coords[2], coords[3])  # aisle, side, x, y
+            if slot_key not in slot_groups:
+                slot_groups[slot_key] = []
+            slot_groups[slot_key].append((coords, code))
+
+        # Sort slots by X ascending (closest to door first)
+        sorted_slots = sorted(slot_groups.items(), key=lambda s: s[0][2])
+
+        # Pick boxes prioritizing complete pairs (slots with 2 boxes first)
+        selected = []
+        # First: slots with Z-pairs (both Z=1 and Z=2)
+        for slot_key, slot_items in sorted_slots:
+            if len(selected) >= 12:
+                break
+            if len(slot_items) == 2:
+                slot_items.sort(key=lambda t: t[0][4])  # Z=1 first
+                for item in slot_items:
+                    if len(selected) < 12:
+                        selected.append(item)
+
+        # Then: remaining single boxes
+        for slot_key, slot_items in sorted_slots:
+            if len(selected) >= 12:
+                break
+            if len(slot_items) == 1:
+                selected.append(slot_items[0])
+
+        # Final sort: Z ascending then X ascending
+        selected.sort(key=lambda t: (t[0][4], t[0][2]))
+        return [code for _, code in selected[:12]]
+
 class ZSafeWeightedAlgorithm(ZSafeSimpleAlgorithm):
     """
     Learns observed destination frequency and stores frequent destinations near X=1.
@@ -569,6 +662,71 @@ class ZSafeRWeightedYSafeAlgorithm(ZSafeWeightedYSafeAlgorithm):
                             if z1_box and z1_box.get('destination') == dest:
                                 return (aisle, side, x, y, 2)
         return None
+class ZSafeWeightedProAlgorithm(ZSafeWeightedAlgorithm):
+    """
+    Combines ZSafeWeighted's frequency-aware storage with ZSafePro's
+    smart retrieval plan.
+
+    STORAGE: inherited from ZSafeWeightedAlgorithm — frequent destinations
+    near X=1, rare ones get a soft backoff, all Z-safe.
+
+    RETRIEVAL (from ZSafePro):
+      1. Pick destination with 12+ boxes and lowest average X.
+      2. Prefer complete Z=1+Z=2 pairs to avoid orphaned Z=2.
+      3. Sort by Z ascending, then X ascending.
+    """
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        # Pick destination with lowest average X
+        best_dest = None
+        best_avg_x = float('inf')
+        for dest, items in dest_groups.items():
+            if len(items) >= 12:
+                avg_x = sum(c[2] for c, _ in items) / len(items)
+                if avg_x < best_avg_x:
+                    best_avg_x = avg_x
+                    best_dest = dest
+
+        if best_dest is None:
+            return None
+
+        items = dest_groups[best_dest]
+
+        # Group by (aisle, side, x, y) slot
+        slot_groups = {}
+        for coords, code in items:
+            slot_key = (coords[0], coords[1], coords[2], coords[3])
+            if slot_key not in slot_groups:
+                slot_groups[slot_key] = []
+            slot_groups[slot_key].append((coords, code))
+
+        sorted_slots = sorted(slot_groups.items(), key=lambda s: s[0][2])
+
+        # Prefer complete Z-pairs first
+        selected = []
+        for slot_key, slot_items in sorted_slots:
+            if len(selected) >= 12:
+                break
+            if len(slot_items) == 2:
+                slot_items.sort(key=lambda t: t[0][4])
+                for item in slot_items:
+                    if len(selected) < 12:
+                        selected.append(item)
+
+        for slot_key, slot_items in sorted_slots:
+            if len(selected) >= 12:
+                break
+            if len(slot_items) == 1:
+                selected.append(slot_items[0])
+
+        selected.sort(key=lambda t: (t[0][4], t[0][2]))
+        return [code for _, code in selected[:12]]
 
 class DestinationZoneAlgorithm(BaseAlgorithm):
     """
