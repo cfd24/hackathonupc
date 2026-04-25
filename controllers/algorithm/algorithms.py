@@ -402,7 +402,6 @@ class ZSafeWeightedAlgorithm(ZSafeSimpleAlgorithm):
                     for side in range(1, warehouse.num_sides + 1):
                         if warehouse.is_slot_empty(aisle, side, x, y, 1):
                             return (aisle, side, x, y, 1)
-
                         if warehouse.is_slot_empty(aisle, side, x, y, 2):
                             z1_box = warehouse.grid.get((aisle, side, x, y, 1))
                             if z1_box and z1_box.get('destination') == dest:

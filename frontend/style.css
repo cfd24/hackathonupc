@@ -1,210 +1,126 @@
 :root {
-    --bg-color: #0a0a0c;
-    --glass-bg: rgba(255, 255, 255, 0.03);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --neon-cyan: #00f2ff;
-    --neon-purple: #7000ff;
-    --text-main: #e0e0e0;
-    --text-dim: #808080;
-    --font-ui: 'Outfit', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --bg-main: #0a0a0c;
+    --bg-card: #141418;
+    --accent: #00f2ff;
+    --accent-glow: rgba(0, 242, 255, 0.3);
+    --text-primary: #f0f0f0;
+    --text-secondary: #8a8a90;
+    --border: #2a2a30;
+    --aisle-bg: #000000;
 }
 
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-    background-color: var(--bg-color);
-    color: var(--text-main);
-    font-family: var(--font-ui);
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'Outfit', sans-serif;
     height: 100vh;
     overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
 }
 
-.glass-container {
-    width: 98vw;
-    height: 96vh;
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--glass-border);
-    border-radius: 24px;
-    display: grid;
-    grid-template-areas: 
-        "header header"
-        "main sidebar";
-    grid-template-columns: 1fr 300px;
-    grid-template-rows: 80px 1fr;
-    gap: 20px;
-    padding: 20px;
-}
+.app-container { display: flex; flex-direction: column; height: 100%; }
 
-header {
-    grid-area: header;
+.app-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 10px;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
 }
 
-.neon-text {
-    color: var(--neon-cyan);
-    text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
-    font-weight: 600;
-    font-size: 1.5rem;
-}
-
-.metrics-bar {
-    display: flex;
-    gap: 30px;
-}
-
-.metric-card {
-    display: flex;
-    flex-direction: column;
-}
-
-.metric-card label {
-    font-size: 0.7rem;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.metric-card span {
-    font-family: var(--font-mono);
-    font-size: 1.2rem;
-    color: var(--neon-cyan);
-}
-
-main {
-    grid-area: main;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    overflow: hidden;
-}
-
-.glass {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    padding: 15px;
-}
-
-.controls {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    height: 60px;
-}
-
-.silo-grid {
+.comparison-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     flex: 1;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+}
+
+.algo-column {
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    border-right: 1px solid var(--border);
+}
+
+.algo-header {
+    margin-bottom: 1.5rem;
+}
+
+.algo-header h2 {
+    font-size: 1.2rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    background: var(--bg-main);
+    padding: 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+}
+
+.metric label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.metric span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem;
+}
+
+.aisle-grid-mini {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 15px;
-    overflow: auto;
-}
-
-.aisle-card {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.aisle-header {
-    font-size: 0.8rem;
-    color: var(--text-dim);
-    display: flex;
-    justify-content: space-between;
-}
-
-.grid-canvas {
+    gap: 1rem;
     flex: 1;
+}
+
+.aisle-panel-mini {
+    background: var(--aisle-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+}
+
+.aisle-panel-mini canvas {
     width: 100%;
-    background: #000;
-    border-radius: 4px;
+    height: 100%;
 }
 
-.sidebar {
-    grid-area: sidebar;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.legend-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.7rem;
-}
-
-.color-box {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
-}
-
-.log-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.feed-container {
-    flex: 1;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    overflow-y: auto;
-    color: var(--text-dim);
-}
-
-.btn-neon {
-    background: transparent;
-    border: 1px solid var(--neon-cyan);
-    color: var(--neon-cyan);
-    padding: 8px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: 0.3s;
-}
-
-.btn-neon:hover {
-    background: var(--neon-cyan);
-    color: var(--bg-color);
-    box-shadow: 0 0 15px var(--neon-cyan);
-}
-
-.btn-outline {
-    background: transparent;
-    border: 1px solid var(--glass-border);
-    color: var(--text-main);
-    padding: 8px 20px;
-    border-radius: 8px;
+.btn-primary {
+    background: var(--accent);
+    color: var(--bg-main);
+    border: none;
+    padding: 0.6rem 2rem;
+    font-weight: 600;
+    border-radius: 6px;
     cursor: pointer;
 }
 
-input[type=range] {
-    accent-color: var(--neon-cyan);
+.compact-feed {
+    height: 120px;
+    background: var(--bg-card);
+    padding: 0.5rem 1.5rem;
 }
+
+.feed-log-mini {
+    height: 100%;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.logo { font-size: 1.2rem; letter-spacing: 2px; }
+.accent { color: var(--accent); text-shadow: 0 0 10px var(--accent-glow); }
