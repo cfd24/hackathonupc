@@ -1,10 +1,11 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm
 from controllers.silo_simulator.simulator import Simulator
 import random
+import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='frontend')
 CORS(app)
 
 def generate_box_codes(n, num_destinations):
@@ -17,6 +18,14 @@ def generate_box_codes(n, num_destinations):
         codes.append(src + dest + bulk)
     return codes
 
+@app.route('/')
+def index():
+    return send_from_directory('frontend', 'index.html')
+
+@app.route('/<path:path>')
+def send_static(path):
+    return send_from_directory('frontend', path)
+
 @app.route('/run', methods=['POST'])
 def run_simulation():
     data = request.json
@@ -26,17 +35,9 @@ def run_simulation():
     sim = Simulator(SimpleAlgorithm())
     sim.run(box_codes)
     
-    # Extract box positions
-    boxes = []
-    for (aisle, side, x, y, z), box_data in sim.warehouse.grid.items():
-        boxes.append({
-            'aisle': aisle,
-            'side': side,
-            'x': x,
-            'y': y,
-            'z': z,
-            'dest': box_data['destination']
-        })
+    boxes = [{
+        'aisle': aisle, 'side': side, 'x': x, 'y': y, 'z': z, 'dest': box_data['destination']
+    } for (aisle, side, x, y, z), box_data in sim.warehouse.grid.items()]
     
     occupancy = len(sim.warehouse.grid) / 7680
     hours = sim.total_time / 3600
@@ -84,7 +85,7 @@ def compare_algorithms():
         'occupancy': len(sim_greedy.warehouse.grid) / 7680,
         'boxes': [{
             'aisle': a, 'side': s, 'x': x, 'y': y, 'z': z, 'dest': b['destination']
-        } for (a, s, x, y, z), b in sim_greedy.warehouse.grid.items()] 
+        } for (a, s, x, y, z), b in sim_greedy.warehouse.grid.items()]
     }
     
     return jsonify(results)
