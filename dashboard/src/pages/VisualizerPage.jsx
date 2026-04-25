@@ -6,7 +6,7 @@ import {
   ArrowDownLeft, ArrowUpRight, Cpu, 
   Layers, Navigation, Box, Maximize2, Minimize2,
   Timer, BarChart3, Crosshair, X, ArrowUp, ArrowDown,
-  Eye, EyeOff, Loader2, Package
+  Eye, EyeOff, Loader2, Package, LayoutDashboard
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -336,6 +336,18 @@ export default function VisualizerPage() {
             </div>
           </div>
         </div>
+
+        <nav className="flex items-center gap-2 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
+          <Link to="/" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
+            <LayoutDashboard className="w-4 h-4" /> Benchmark
+          </Link>
+          <div className="px-4 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+            <Layers className="w-4 h-4" /> Visualizer
+          </div>
+          <Link to="/palletizer" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
+            <Package className="w-4 h-4 text-emerald-400" /> Palletizer
+          </Link>
+        </nav>
 
         <div className="flex items-center gap-8 px-6 py-2 bg-slate-900/50 border border-slate-800 rounded-xl">
           {[{ label: 'Inbound', val: stats.inbound, color: 'text-indigo-400' }, { label: 'Outbound', val: stats.outbound, color: 'text-slate-100' }, { label: 'Relocs', val: stats.relocs, color: 'text-orange-400' }].map(s => (

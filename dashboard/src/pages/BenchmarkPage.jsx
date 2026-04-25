@@ -5,7 +5,7 @@ import {
 import { 
   TrendingUp, ShieldAlert, Award, Zap, Eraser, 
   Import, AlertCircle, CheckCircle2, LayoutDashboard,
-  Play
+  Play, Package
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -125,6 +125,13 @@ export default function BenchmarkPage() {
             >
               <Play className="w-4 h-4" />
               Live Visualizer
+            </Link>
+            <Link 
+              to="/palletizer"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"
+            >
+              <Package className="w-4 h-4 text-emerald-400" />
+              Palletizer
             </Link>
             <button 
               onClick={() => setShowImporter(!showImporter)}
