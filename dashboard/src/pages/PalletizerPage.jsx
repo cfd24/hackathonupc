@@ -3,7 +3,7 @@ import {
   Box, Package, Truck, Timer, BarChart3, 
   ChevronLeft, LayoutDashboard, Layers,
   CheckCircle2, Loader2, ArrowRight, TrendingUp,
-  Clock, Warehouse, Zap, Info
+  Clock, Warehouse, Zap, Info, Database
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -139,6 +139,9 @@ export default function PalletizerPage() {
           <div className="px-4 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 flex items-center gap-2">
             <Package className="w-4 h-4" /> Palletizer
           </div>
+          <Link to="/raw-data" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
+            <Database className="w-4 h-4 text-amber-400" /> Raw Data
+          </Link>
         </nav>
       </header>
 

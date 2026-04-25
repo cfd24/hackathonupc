@@ -6,7 +6,7 @@ import {
   ArrowDownLeft, ArrowUpRight, Cpu, 
   Layers, Navigation, Box, Maximize2, Minimize2,
   Timer, BarChart3, Crosshair, X, ArrowUp, ArrowDown,
-  Eye, EyeOff, Loader2, Package, LayoutDashboard
+  Eye, EyeOff, Loader2, Package, LayoutDashboard, Database
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -346,6 +346,9 @@ export default function VisualizerPage() {
           </div>
           <Link to="/palletizer" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
             <Package className="w-4 h-4 text-emerald-400" /> Palletizer
+          </Link>
+          <Link to="/raw-data" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
+            <Database className="w-4 h-4 text-amber-400" /> Raw Data
           </Link>
         </nav>
 

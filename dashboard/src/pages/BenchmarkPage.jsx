@@ -5,7 +5,7 @@ import {
 import { 
   TrendingUp, ShieldAlert, Award, Zap, Eraser, 
   Import, AlertCircle, CheckCircle2, LayoutDashboard,
-  Play, Package
+  Play, Package, Database
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -147,6 +147,7 @@ export default function BenchmarkPage() {
           <div className="flex items-center gap-4">
             <Link to="/visualizer" className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"><Play className="w-4 h-4" /> Live Visualizer</Link>
             <Link to="/palletizer" className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"><Package className="w-4 h-4 text-emerald-400" /> Palletizer</Link>
+            <Link to="/raw-data" className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"><Database className="w-4 h-4 text-amber-400" /> Raw Data</Link>
             <button onClick={() => setShowImporter(!showImporter)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-indigo-500/20 active:scale-95"><Import className="w-4 h-4" /> Import JSON</button>
           </div>
         </header>
