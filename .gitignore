@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+simulation_state.json
+simulation_state.csv
+silo-semi-empty.csv
+generate_dummy_csv.py
+test_core_logic.py
+example_walkthrough.py
