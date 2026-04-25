@@ -3,7 +3,7 @@
 ## Visión general
 
 Sistema de gestión de almacén automatizado para el reto **HackUPC 2026 (Medieval — Hack the Flow)**.
-El objetivo es minimizar el tiempo total de operación de los shuttles al almacenar y recuperar cajas, y entrenar una red neuronal que aprenda a imitar (y mejorar) esas decisiones.
+El objetivo es minimizar el tiempo total de operación de los shuttles al almacenar y recuperar cajas. La aplicación está diseñada como un *sandbox* para poder programar, probar y comparar fácilmente diferentes algoritmos logísticos.
 
 ### Contexto de dominio
 
@@ -19,7 +19,8 @@ El sistema trabaja con estos elementos principales:
 4. Cuando hay suficientes cajas del mismo destino (12 cajas), se reserva un pallet.
 5. El algoritmo decide en qué orden recuperar las cajas, priorizando optimizar el tiempo.
 6. Los shuttles extraen las cajas del silo.
-7. Las cajas se agrupan en pallets y se consideran enviadas. Máximo de 8 pallets activos a la vez.
+7. La caja se considera extraída cuando x=0.
+8. Las cajas se agrupan en pallets y se consideran enviadas. Máximo de 8 pallets activos a la vez.
 
 ### Reglas de negocio importantes
 
@@ -40,9 +41,7 @@ Tiempo de movimiento: `t = 10 + d` (donde 10s es el tiempo fijo de recoger/dejar
 
 ## Dependencias externas
 
-| Librería | Uso | Impacto |
-|----------|-----|---------|
-| `numpy`  | Álgebra lineal en la red neuronal (matrices W, b; forward/backward pass) | Solo necesaria para `neural.py` |
+Actualmente, no hay dependencias externas. La simulación utiliza librerías nativas de Python (`sys`, `os`, `time`, `random`).
 
 ## Estructura del proyecto
 
@@ -58,8 +57,7 @@ hackathonupc/
 │       └── <fechas>_task.md ← tareas activas de agentes
 ├── controllers/             ← Lógica de control, algoritmos y simulación del silo
 │   ├── algorithm/
-│   │   ├── algorithms.py
-│   │   └── neural.py
+│   │   └── algorithms.py
 │   └── silo_simulator/
 │       ├── simulator.py
 │       └── warehouse.py
@@ -75,35 +73,23 @@ hackathonupc/
 **Resumen de alto nivel:** Define todas las estructuras de datos del almacén y la lógica de bajo nivel (colocar/retirar cajas, consultar posiciones, calcular tiempos de shuttle).
 
 **Explicación detallada:**
-- **Position** / **Box**: Clases para coordenadas y datos de las cajas.
 - **Shuttle**: Un carro por nivel Y. Calcula el tiempo de viaje con la restricción `10 + |target - current|`.
-- **Warehouse**: Gestiona el grid 3D (`grid`), hace validación de restricciones `Z` y mantiene un lookup inverso de las posiciones de cada caja (`box_positions`).
+- **Warehouse**: Gestiona el grid 3D (`grid`), hace validación de restricciones `Z`.
 
 ### `controllers/silo_simulator/simulator.py`
 **Resumen de alto nivel:** Motor que orquesta la simulación usando un algoritmo intercambiable.
 
-**Explicación detallada:** Carga un flujo de cajas (códigos de 20 dígitos), intenta almacenarlas usando el algoritmo provisto y gestiona la formación de pallets (comprobando el límite de 8 pallets activos). Al final, imprime las métricas de éxito (Total Time, Throughput, Full Pallets %).
+**Explicación detallada:** Carga un flujo de cajas (códigos de 20 dígitos), intenta almacenarlas usando el algoritmo provisto y gestiona la formación de pallets (comprobando el límite de 8 pallets activos). Al final, contabiliza el tiempo (`total_time = max(shuttles_time)`) y calcula las métricas de éxito (Total Time, Throughput, Full Pallets %).
 
 ### `controllers/algorithm/algorithms.py`
-**Resumen de alto nivel:** Implementa la estrategia greedy de almacenamiento/recuperación y genera datos de entrenamiento para la IA.
+**Resumen de alto nivel:** Define la interfaz de los algoritmos y proporciona una implementación base `SimpleAlgorithm`.
 
 **Explicación detallada:**
-- **`store_greedy`**: Mueve el shuttle con menor coste al slot X más cercano a 0.
-- **`retrieve_greedy`**: Recupera caja relocalizando la caja en Z=1 si es necesario.
-- **`collect_training_data`**: Genera vectores de estado de ocupación para alimentar a la red neuronal basándose en las decisiones greedy.
-
-### `controllers/algorithm/neural.py`
-**Resumen de alto nivel:** Red neuronal feedforward (con NumPy) entrenada por imitación sobre el algoritmo greedy.
-
-**Explicación detallada:** Arquitectura de 3 capas (Input 121 -> ReLU 64 -> ReLU 32 -> Softmax 60). Aprende a predecir la mejor posición X para dejar la caja. Contiene backprop manual y optimización SGD (`train_step`, `fit`, `predict_x`).
+- **`BaseAlgorithm`**: Interfaz con `get_storage_location` y `get_retrieval_plan`.
+- **`SimpleAlgorithm`**: Un algoritmo muy simple que coloca cajas en el primer hueco que encuentra (`x=1`, `y=1`...) y recupera pallets ciegamente cuando llega a 12 cajas, sin optimización de tiempos. Sirve como *baseline*.
 
 ### `main/main.py`
-**Resumen de alto nivel:** Punto de entrada o script demo para comparar enfoques.
+**Resumen de alto nivel:** Sandbox de prueba de rendimiento.
 
-**Explicación detallada:** 
-Orquesta dos fases:
-1. Una simulación de almacenamiento y recuperación usando el algoritmo greedy.
-2. La recolección de datos, entrenamiento de `WarehouseNet` durante 60 épocas, y una comparación del tiempo de operaciones entre la red neuronal y el greedy en un lote nuevo de cajas.
-
-**Notas:**
-La ubicación actual de dependencias puede requerir ajustar las rutas de importación (`controllers.warehouse` -> `controllers.silo_simulator.warehouse`, etc.).
+**Explicación detallada:**
+Este script es el entorno de pruebas (*sandbox*). Genera un flujo de miles de cajas y las envía al simulador iterando sobre todos los algoritmos listados en `AVAILABLE_ALGORITHMS`. Finalmente, pinta una tabla con los resultados (tiempo, pallets enviados y throughput) de todos los algoritmos, permitiendo compararlos.
