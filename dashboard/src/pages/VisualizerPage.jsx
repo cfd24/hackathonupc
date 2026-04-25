@@ -6,7 +6,7 @@ import {
   ArrowDownLeft, ArrowUpRight, Cpu, 
   Layers, Navigation, Box, Maximize2, Minimize2,
   Timer, BarChart3, Crosshair, X, ArrowUp, ArrowDown,
-  Eye, EyeOff
+  Eye, EyeOff, Loader2
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -22,6 +22,7 @@ const SIDES = 2;
 const X_POS = 60;
 const Y_LEVELS = 8;
 const Z_DEPTH = 2;
+const TICKS_PER_SEC = 10; // 100ms base tick
 
 export default function VisualizerPage() {
   const [searchParams] = useSearchParams();
@@ -85,6 +86,7 @@ export default function VisualizerPage() {
     for (let y = 1; y <= Y_LEVELS; y++) {
       newShuttles.push({ 
         y, x: 0, targetX: 0, state: 'idle', task: null,
+        handlingTicks: 0,
         stats: { inbound: 0, outbound: 0, relocs: 0 },
         queue: []
       });
@@ -93,7 +95,7 @@ export default function VisualizerPage() {
     setGrid(newGrid);
     setShuttles(newShuttles);
     setStats({ inbound: 0, outbound: 0, relocs: 0 });
-    setLogs([{ type: 'info', msg: `Silo architecture synchronized: 8 shuttle controllers online.` }]);
+    setLogs([{ type: 'info', msg: `Silo synchronized: Time-accurate shuttle travel physics active (t = 10 + d).` }]);
     setFocusedShuttleY(null);
     setIsPlaying(false);
   }, [startCapacity]);
@@ -131,34 +133,39 @@ export default function VisualizerPage() {
     let highlights = {};
 
     nextShuttles.forEach(s => {
-      if (s.state === 'moving' || s.state === 'working') {
-        const step = speed / 10;
-        if (s.x < s.targetX) s.x = Math.min(s.x + step, s.targetX);
-        else if (s.x > s.targetX) s.x = Math.max(s.x - step, s.targetX);
+      // Logic scaling: One sim-second per TICK_PER_SEC.
+      // If speed=10, we do 1 sim-second per tick (instant handling/travel relative to real time).
+      // If speed=1, we do 0.1 sim-second per tick.
+      const simSecondsPerTick = speed / TICKS_PER_SEC;
 
-        if (Math.abs(s.x - s.targetX) < 0.1) {
+      if (s.state === 'moving') {
+        const dist = s.targetX - s.x;
+        const step = Math.sign(dist) * Math.min(Math.abs(dist), simSecondsPerTick);
+        s.x += step;
+
+        if (Math.abs(s.x - s.targetX) < 0.01) {
           s.x = s.targetX;
-          if (s.state === 'working') {
-            const task = s.task;
-            if (task.type === 'inbound') {
-              nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = { dest: task.dest };
-              nextStats.inbound++;
-              s.stats.inbound++;
-              addLog(`Placed inbound box ${task.dest} at X:${task.x} L:${task.y} S:${task.s}`, 'success');
-              highlights[`${task.s}_${task.x}_${task.y}`] = 'arrival';
-            } else if (task.type === 'outbound') {
-              nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = null;
-              nextStats.outbound++;
-              s.stats.outbound++;
-              addLog(`Retrieved box from X:${task.x} L:${task.y} S:${task.s}`, 'info');
-              highlights[`${task.s}_${task.x}_${task.y}`] = 'retrieve';
-            }
-            s.state = 'idle';
-            s.task = null;
-            if (s.queue.length > 0) s.queue.shift();
-          } else {
-            s.state = 'working';
+          s.state = 'handling';
+          s.handlingTicks = 10 / simSecondsPerTick; // 10 seconds of handling
+        }
+      } else if (s.state === 'handling') {
+        s.handlingTicks -= 1;
+        if (s.handlingTicks <= 0) {
+          const task = s.task;
+          if (task.type === 'inbound') {
+            nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = { dest: task.dest };
+            nextStats.inbound++;
+            s.stats.inbound++;
+            highlights[`${task.s}_${task.x}_${task.y}`] = 'arrival';
+          } else if (task.type === 'outbound') {
+            nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = null;
+            nextStats.outbound++;
+            s.stats.outbound++;
+            highlights[`${task.s}_${task.x}_${task.y}`] = 'retrieve';
           }
+          s.state = 'idle';
+          s.task = null;
+          if (s.queue.length > 0) s.queue.shift();
         }
       }
 
@@ -203,17 +210,16 @@ export default function VisualizerPage() {
     setActiveActions(highlights);
     setTimeout(() => setActiveActions({}), 400);
 
-  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlot, addLog]);
+  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlot]);
 
   useEffect(() => {
-    if (isPlaying) { simTimer.current = setInterval(tick, 100); }
+    if (isPlaying) { simTimer.current = setInterval(tick, 1000 / TICKS_PER_SEC); }
     else { clearInterval(simTimer.current); }
     return () => clearInterval(simTimer.current);
   }, [isPlaying, tick]);
 
   const focusedShuttle = useMemo(() => shuttles.find(s => s.y === focusedShuttleY), [shuttles, focusedShuttleY]);
 
-  // FOLLOW SHUTTLE LOGIC
   useEffect(() => {
     if (followShuttle && focusedShuttle && scrollContainerRef.current) {
       const container = scrollContainerRef.current;
@@ -239,9 +245,9 @@ export default function VisualizerPage() {
           <div className="space-y-0.5">
             <h1 className="text-lg font-bold text-slate-50 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-400" />Silo Visualizer: <span className="text-indigo-400">Aisle {activeAisle}</span></h1>
             <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-              <span>{focusedShuttleY ? `Focused Level ${focusedShuttleY}` : 'Global Monitor'}</span>
+              <span>{focusedShuttleY ? `Focused Level ${focusedShuttleY}` : 'Time-Accurate Physics'}</span>
               <span className="w-1 h-1 rounded-full bg-slate-700" />
-              <span>{shuttles.length} Shuttles Active</span>
+              <span>{shuttles.length} Active Controllers</span>
             </div>
           </div>
         </div>
@@ -275,7 +281,7 @@ export default function VisualizerPage() {
           </section>
 
           <section className="space-y-6">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider"><Settings2 className="w-4 h-4" /> Operations</div>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider"><Settings2 className="w-4 h-4" /> Physics Engine</div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setIsPlaying(!isPlaying)} className={cn("py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95", isPlaying ? "bg-slate-800" : "bg-indigo-600 text-white")}>
@@ -283,12 +289,12 @@ export default function VisualizerPage() {
                 </button>
                 <button onClick={initWarehouse} className="py-3 bg-slate-900 border border-slate-800 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95"><RotateCcw className="w-5 h-5" /></button>
               </div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-2 flex justify-between">Speed <span>{speed}x</span></label><input type="range" min="1" max="100" value={speed} onChange={e => setSpeed(parseInt(e.target.value))} className="w-full accent-indigo-500" /></div>
+              <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-2 flex justify-between">Travel Speed <span>{speed}x</span></label><input type="range" min="1" max="100" value={speed} onChange={e => setSpeed(parseInt(e.target.value))} className="w-full accent-indigo-500" /></div>
             </div>
           </section>
 
           <section className="flex-1 overflow-hidden flex flex-col">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-4"><ListTodo className="w-4 h-4" /> Event Feed</div>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-4"><ListTodo className="w-4 h-4" /> Activity Feed</div>
             <div className="flex-1 bg-slate-950 border border-slate-900 rounded-xl p-4 overflow-y-auto space-y-3 font-mono text-[10px] scrollbar-hide">
               {logs.map((l, i) => (
                 <div key={i} className={cn("flex gap-2 animate-in slide-in-from-right-2", l.type === 'success' ? 'text-indigo-400' : l.type === 'warning' ? 'text-orange-400' : 'text-slate-500')}>
@@ -310,42 +316,25 @@ export default function VisualizerPage() {
                   <div className="p-3 bg-indigo-500/10 rounded-xl border border-indigo-500/20"><Maximize2 className="w-6 h-6 text-indigo-400" /></div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-50">Shuttle Focus: Level {focusedShuttleY}</h2>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Dual-Side Unified Operations</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Real-time Travel Animation</p>
                   </div>
                 </div>
-                
                 <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => setFollowShuttle(!followShuttle)}
-                    className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all border",
-                      followShuttle ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900 border-slate-800 text-slate-400"
-                    )}
-                  >
-                    {followShuttle ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    {followShuttle ? 'Following Shuttle' : 'Free Scroll'}
-                  </button>
+                  <button onClick={() => setFollowShuttle(!followShuttle)} className={cn("flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs border transition-all", followShuttle ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900 border-slate-800 text-slate-400")}>{followShuttle ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />} {followShuttle ? 'Auto-Follow' : 'Manual View'}</button>
                   <button onClick={() => setFocusedShuttleY(null)} className="p-3 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><X className="w-6 h-6" /></button>
                 </div>
               </div>
 
-              {/* DUAL SIDE VIEW ROW (Scrollable) */}
+              {/* DUAL SIDE VIEW ROW */}
               <div ref={scrollContainerRef} className="flex-1 overflow-x-auto scrollbar-hide py-12 px-12 scroll-smooth">
-                {/* 
-                   IMPORTANT FIX: 
-                   The inline-grid must not have justify-center or similar. 
-                   We use min-width to ensure the scroll area is respected.
-                */}
                 <div className="inline-grid gap-y-0 min-w-max" style={{ gridTemplateColumns: 'repeat(60, 150px)' }}>
-                  
                   {/* LEFT SIDE (TOP) */}
                   <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 uppercase tracking-widest">Left Side (01)</div>
                   {Array.from({ length: X_POS }).map((_, xIdx) => {
-                    const x = xIdx + 1;
-                    const { z1, z2 } = getCellData(x, focusedShuttleY, 1);
+                    const x = xIdx + 1; const { z1, z2 } = getCellData(x, focusedShuttleY, 1);
                     const action = activeActions[`1_${x}_${focusedShuttleY}`];
                     return (
-                      <div key={`L${x}`} className={cn("h-40 border border-slate-800/50 flex transition-all duration-300", action === 'arrival' && "bg-blue-500/20", action === 'retrieve' && "bg-yellow-500/20")}>
+                      <div key={`L${x}`} className={cn("h-40 border border-slate-800/50 flex transition-all duration-300", action === 'arrival' && "bg-blue-500/40 border-blue-400 scale-105 z-10", action === 'retrieve' && "bg-yellow-500/40 border-yellow-400 scale-105 z-10")}>
                         <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z1</span>
                           {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.dest.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
@@ -357,35 +346,31 @@ export default function VisualizerPage() {
                       </div>
                     );
                   })}
-
-                  {/* SHUTTLE CORRIDOR (MIDDLE) */}
+                  {/* SHUTTLE CORRIDOR */}
                   <div className="col-span-full h-24 bg-slate-900/30 border-y border-slate-800 my-2 relative overflow-visible">
-                    <div className="absolute inset-0 opacity-10 pointer-events-none flex items-center justify-center text-[40px] font-bold uppercase tracking-[1em] text-slate-500">Shuttle Track</div>
                     <div 
                       className="absolute top-1/2 -translate-y-1/2 transition-all duration-100 flex items-center justify-center"
                       style={{ left: `${(focusedShuttle.x - 1) * 150 + 75}px`, transform: 'translate(-50%, -50%)' }}
                     >
                       <div className={cn(
                         "w-16 h-16 bg-indigo-600 rounded-xl shadow-2xl flex items-center justify-center relative transition-transform duration-300",
-                        focusedShuttle.state === 'working' && focusedShuttle.task?.s === 1 && "-translate-y-6",
-                        focusedShuttle.state === 'working' && focusedShuttle.task?.s === 2 && "translate-y-6"
+                        focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 1 && "-translate-y-6",
+                        focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 2 && "translate-y-6"
                       )}>
-                        <Cpu className="w-8 h-8 text-white" />
-                        {focusedShuttle.state === 'working' && focusedShuttle.task?.s === 1 && <ArrowUp className="absolute -top-4 w-4 h-4 text-indigo-400 animate-bounce" />}
-                        {focusedShuttle.state === 'working' && focusedShuttle.task?.s === 2 && <ArrowDown className="absolute -bottom-4 w-4 h-4 text-indigo-400 animate-bounce" />}
+                        {focusedShuttle.state === 'handling' ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : <Cpu className="w-8 h-8 text-white" />}
+                        {focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 1 && <ArrowUp className="absolute -top-4 w-4 h-4 text-indigo-400 animate-bounce" />}
+                        {focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 2 && <ArrowDown className="absolute -bottom-4 w-4 h-4 text-indigo-400 animate-bounce" />}
                         <div className="absolute -bottom-8 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">X:{focusedShuttle.x.toFixed(1)}</div>
                       </div>
                     </div>
                   </div>
-
-                  {/* RIGHT SIDE (BOTTOM) */}
+                  {/* RIGHT SIDE */}
                   <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 mt-4 uppercase tracking-widest">Right Side (02)</div>
                   {Array.from({ length: X_POS }).map((_, xIdx) => {
-                    const x = xIdx + 1;
-                    const { z1, z2 } = getCellData(x, focusedShuttleY, 2);
+                    const x = xIdx + 1; const { z1, z2 } = getCellData(x, focusedShuttleY, 2);
                     const action = activeActions[`2_${x}_${focusedShuttleY}`];
                     return (
-                      <div key={`R${x}`} className={cn("h-40 border border-slate-800/50 flex transition-all duration-300", action === 'arrival' && "bg-blue-500/20", action === 'retrieve' && "bg-yellow-500/20")}>
+                      <div key={`R${x}`} className={cn("h-40 border border-slate-800/50 flex transition-all duration-300", action === 'arrival' && "bg-blue-500/40 border-blue-400 scale-105 z-10", action === 'retrieve' && "bg-yellow-500/40 border-yellow-400 scale-105 z-10")}>
                         <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z1</span>
                           {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.dest.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
@@ -397,13 +382,6 @@ export default function VisualizerPage() {
                       </div>
                     );
                   })}
-                  
-                  {/* X-LABELS FOOTER */}
-                  <div className="col-span-full flex pt-4">
-                    {Array.from({ length: X_POS }).map((_, i) => (
-                      <div key={i} className="w-[150px] text-center text-[10px] font-bold text-slate-700">X{i+1}</div>
-                    ))}
-                  </div>
                 </div>
               </div>
 
@@ -413,23 +391,35 @@ export default function VisualizerPage() {
                   <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><Crosshair className="w-4 h-4" /> Telemetry</div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-950 p-3 rounded-xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">X-Pos</p><p className="text-xl font-mono font-bold text-slate-100">{focusedShuttle.x.toFixed(1)}</p></div>
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Status</p><p className="text-[10px] font-bold uppercase mt-1 text-indigo-400">{focusedShuttle.state}</p></div>
+                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase">Status</p>
+                      <p className={cn("text-[11px] font-bold uppercase mt-1", focusedShuttle.state === 'idle' ? 'text-slate-500' : 'text-indigo-400')}>{focusedShuttle.state}</p>
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><Timer className="w-4 h-4" /> Current Task</div>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 h-20 flex items-center justify-center text-center">
-                    <p className="text-[11px] font-bold text-slate-300">{focusedShuttle.task ? `${focusedShuttle.task.type.toUpperCase()} @ X:${focusedShuttle.task.x} (S:${focusedShuttle.task.s === 1 ? 'L' : 'R'})` : 'Awaiting Task...'}</p>
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><Timer className="w-4 h-4" /> Progress</div>
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 h-20 flex flex-col items-center justify-center gap-2">
+                    <p className="text-[10px] font-bold text-slate-300">
+                      {focusedShuttle.state === 'moving' && `MOVING TO X:${focusedShuttle.targetX}`}
+                      {focusedShuttle.state === 'handling' && `HANDLING @ X:${focusedShuttle.x}`}
+                      {focusedShuttle.state === 'idle' && 'IDLE'}
+                    </p>
+                    {focusedShuttle.state !== 'idle' && (
+                      <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div className={cn("h-full bg-indigo-500 transition-all duration-300", focusedShuttle.state === 'handling' ? 'animate-pulse' : '')} style={{ width: focusedShuttle.state === 'moving' ? `${(1 - Math.abs(focusedShuttle.targetX - focusedShuttle.x) / 60) * 100}%` : '100%' }} />
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><ListTodo className="w-4 h-4" /> Next Operations</div>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-1">
-                    {focusedShuttle.queue.map((q, i) => (<div key={i} className="text-[9px] font-bold text-indigo-400/70 uppercase">{q.type} @ X:{q.x} {q.s}</div>))}
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><ListTodo className="w-4 h-4" /> Task Detail</div>
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 h-20 flex items-center justify-center">
+                    <p className="text-[11px] font-bold text-indigo-400/90">{focusedShuttle.task ? `${focusedShuttle.task.type.toUpperCase()} @ X:${focusedShuttle.task.x} (SIDE ${focusedShuttle.task.s === 1 ? 'L' : 'R'})` : 'NO TASK'}</p>
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><BarChart3 className="w-4 h-4" /> Performance</div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><BarChart3 className="w-4 h-4" /> Controller Performance</div>
                   <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 grid grid-cols-3 gap-1 text-center">
                     <div><p className="text-[8px] text-slate-500 font-bold uppercase">In</p><p className="text-md font-bold text-indigo-400">{focusedShuttle.stats.inbound}</p></div>
                     <div><p className="text-[8px] text-slate-500 font-bold uppercase">Out</p><p className="text-md font-bold text-slate-100">{focusedShuttle.stats.outbound}</p></div>
@@ -466,7 +456,6 @@ export default function VisualizerPage() {
               <div /> {Array.from({ length: X_POS }).map((_, i) => (<div key={i} className="text-[8px] font-bold text-slate-700 text-center mt-2">{i+1}</div>))}
             </div>
           </div>
-          <footer className="mt-6 flex items-center justify-center gap-12 text-[10px] font-bold text-slate-500 uppercase bg-slate-900/30 py-4 rounded-2xl border border-slate-800/50 shrink-0"><div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm bg-indigo-900/40 border border-indigo-500/30" /> Z1 Occupied</div><div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm bg-indigo-500/60 shadow-[0_0_8px_rgba(99,102,241,0.4)]" /> Z2 Occupied</div><div className="flex items-center gap-3"><div className="w-3 h-4 border-2 border-indigo-400 rounded-sm bg-indigo-400/20" /> Shuttle (Click to Focus)</div></footer>
         </main>
       </div>
     </div>
