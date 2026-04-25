@@ -14,13 +14,15 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
     ("Simple Baseline", SimpleAlgorithm),
     ("Distance Greedy", DistanceGreedyAlgorithm),
     ("Column Grouping", ColumnGroupingAlgorithm),
+    ("Destination Zones", DestinationZoneAlgorithm),
+    ("Maturity First", MaturityFirstAlgorithm),
 ]
 
 # --- SIMULATION CONFIGURATION ---
@@ -167,6 +169,7 @@ def run_sandbox():
             "pallets": sim.sent_pallets,
             "throughput": throughput,
             "pallet_pct": pallet_pct,
+            "relocations": sim.warehouse.relocations,
             "real_duration": real_duration
         })
         print("  -> Completed successfully.")
@@ -180,12 +183,12 @@ def run_sandbox():
     # Sort by simulation time (lower is better)
     results.sort(key=lambda r: r["sim_time"])
     
-    header = f"{'Algorithm':<20} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Real Time':<10}"
+    header = f"{'Algorithm':<20} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Z-Blocks':<9} | {'Real Time':<10}"
     print(header)
     print("-" * len(header))
     
     for r in results:
-        print(f"{r['name']:<20} | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['real_duration']:<8.2f}s")
+        print(f"{r['name']:<20} | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
         
     print("\nSandbox execution finished.")
 

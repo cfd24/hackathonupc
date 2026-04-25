@@ -179,3 +179,154 @@ class ColumnGroupingAlgorithm(BaseAlgorithm):
                 items.sort(key=lambda x: (x[0][4], x[0][2]))
                 return [item[1] for item in items[:12]]
         return None
+
+class DestinationZoneAlgorithm(BaseAlgorithm):
+    """
+    Zone-based storage algorithm.
+
+    STORAGE: assigns each destination a dedicated X-band of slots.
+    With 5 destinations and X=1..60, each destination owns 12 consecutive X positions.
+    When a box arrives, it goes to the first free slot inside its destination's zone.
+    Result: all 12 boxes of a pallet are within a 12-unit X range -> minimal retrieval travel.
+    """
+    ZONE_WIDTH = 12  # X slots per destination
+
+    def __init__(self):
+        self._dest_zones = {}   # destination -> (x_start, x_end) inclusive
+        self._next_zone_start = 1
+
+    def _get_or_assign_zone(self, dest, warehouse):
+        if dest not in self._dest_zones:
+            x_start = self._next_zone_start
+            x_end   = min(x_start + self.ZONE_WIDTH - 1, warehouse.num_x)
+            self._dest_zones[dest] = (x_start, x_end)
+            self._next_zone_start  = x_end + 1
+            if self._next_zone_start > warehouse.num_x:
+                self._next_zone_start = 1
+        return self._dest_zones[dest]
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        x_start, x_end = self._get_or_assign_zone(dest, warehouse)
+
+        for x in range(x_start, x_end + 1):
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        for z in range(1, warehouse.num_z + 1):
+                            if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                continue
+                            if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                return (aisle, side, x, y, z)
+
+        for x in range(1, warehouse.num_x + 1):
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        for z in range(1, warehouse.num_z + 1):
+                            if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                continue
+                            if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                return (aisle, side, x, y, z)
+        return None
+
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        best_codes = None
+        best_avg_x = float('inf')
+
+        for dest, items in dest_groups.items():
+            if len(items) >= 12:
+                sample = items[:12]
+                avg_x = sum(coords[2] for coords, _ in sample) / 12
+                if avg_x < best_avg_x:
+                    best_avg_x = avg_x
+                    sample_ordered = sorted(sample, key=lambda t: abs(t[0][2] - warehouse.shuttles_x[t[0][3]]))
+                    best_codes = [code for _, code in sample_ordered]
+
+        return best_codes
+
+class MaturityFirstAlgorithm(BaseAlgorithm):
+    """
+    Maturity-score storage algorithm.
+
+    STORAGE: calculates how close each destination is to forming a pallet (12 boxes).
+    - Destinations with >= 8 boxes (>=67% full) are 'mature': store at lowest X, Z=1.
+    - Destinations with < 8 boxes are 'immature': store further back (higher X).
+    """
+    MATURITY_THRESHOLD = 8
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+
+        dest_counts = {}
+        for bd in warehouse.grid.values():
+            d = bd.get('destination')
+            dest_counts[d] = dest_counts.get(d, 0) + 1
+
+        count = dest_counts.get(dest, 0)
+        is_mature = count >= self.MATURITY_THRESHOLD
+
+        if is_mature:
+            for x in range(1, warehouse.num_x + 1):
+                for y in range(1, warehouse.num_y + 1):
+                    for aisle in range(1, warehouse.num_aisles + 1):
+                        for side in range(1, warehouse.num_sides + 1):
+                            for z in range(1, warehouse.num_z + 1):
+                                if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                    continue
+                                if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                    return (aisle, side, x, y, z)
+        else:
+            mid_x = max(1, warehouse.num_x // 2)
+            for x in range(mid_x, warehouse.num_x + 1):
+                for y in range(1, warehouse.num_y + 1):
+                    for aisle in range(1, warehouse.num_aisles + 1):
+                        for side in range(1, warehouse.num_sides + 1):
+                            for z in range(1, warehouse.num_z + 1):
+                                if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                    continue
+                                if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                    return (aisle, side, x, y, z)
+            for x in range(1, warehouse.num_x + 1):
+                for y in range(1, warehouse.num_y + 1):
+                    for aisle in range(1, warehouse.num_aisles + 1):
+                        for side in range(1, warehouse.num_sides + 1):
+                            for z in range(1, warehouse.num_z + 1):
+                                if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                    continue
+                                if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                    return (aisle, side, x, y, z)
+        return None
+
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        best_codes = None
+        best_score = (-1, float('inf'))  # (count desc, avg_x asc)
+
+        for dest, items in dest_groups.items():
+            if len(items) >= 12:
+                items_sorted = sorted(items, key=lambda t: t[0][2])
+                sample = items_sorted[:12]
+                count  = len(items)
+                avg_x  = sum(coords[2] for coords, _ in sample) / 12
+                score  = (-count, avg_x)
+                if score < best_score:
+                    best_score = score
+                    sample_ordered = sorted(sample, key=lambda t: abs(t[0][2] - warehouse.shuttles_x[t[0][3]]))
+                    best_codes = [code for _, code in sample_ordered]
+
+        return best_codes
+
