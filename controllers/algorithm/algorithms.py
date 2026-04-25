@@ -620,6 +620,13 @@ class ZSafeRWeightedYSafeAlgorithm(ZSafeWeightedYSafeAlgorithm):
     Candidate slots are scanned by X, then side, then aisle, then Y to spread
     early placements across the front face before moving deeper into X.
     """
+    def __init__(self, max_weighted_backoff=1, max_pairs_per_aisle_height=2, z2_start_x_ratio=0.6):
+        super().__init__(
+            max_weighted_backoff=max_weighted_backoff,
+            max_pairs_per_aisle_height=max_pairs_per_aisle_height
+        )
+        self.z2_start_x_ratio = z2_start_x_ratio
+
     def get_storage_location(self, box_data, warehouse):
         dest = box_data.get('destination')
         self.dest_counts[dest] = self.dest_counts.get(dest, 0) + 1
@@ -641,27 +648,143 @@ class ZSafeRWeightedYSafeAlgorithm(ZSafeWeightedYSafeAlgorithm):
         finally:
             self._ysafe_pair_counts = None
 
-    def _find_zsafe_slot(self, dest, warehouse, x_range):
-        for x in x_range:
-            for side in range(1, warehouse.num_sides + 1):
-                for aisle in range(1, warehouse.num_aisles + 1):
-                    for y in range(1, warehouse.num_y + 1):
-                        if not warehouse.is_slot_empty(aisle, side, x, y, 1):
-                            continue
+    def _z2_start_x(self, warehouse):
+        ratio = max(0.0, min(1.0, self.z2_start_x_ratio))
+        if ratio == 0:
+            return 1
+        return max(1, min(warehouse.num_x, int((ratio * warehouse.num_x) + 0.999999)))
 
-                        pair_count = self._destination_aisle_height_count(dest, warehouse, aisle, y)
-                        if pair_count < self.max_pairs_per_aisle_height:
-                            return (aisle, side, x, y, 1)
+    def _find_z1_slot_in_x(self, dest, warehouse, x):
+        for side in range(1, warehouse.num_sides + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for y in range(1, warehouse.num_y + 1):
+                    if not warehouse.is_slot_empty(aisle, side, x, y, 1):
+                        continue
 
-        for x in x_range:
-            for side in range(1, warehouse.num_sides + 1):
-                for aisle in range(1, warehouse.num_aisles + 1):
-                    for y in range(1, warehouse.num_y + 1):
-                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
-                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
-                            if z1_box and z1_box.get('destination') == dest:
-                                return (aisle, side, x, y, 2)
+                    pair_count = self._destination_aisle_height_count(dest, warehouse, aisle, y)
+                    if pair_count < self.max_pairs_per_aisle_height:
+                        return (aisle, side, x, y, 1)
         return None
+
+    def _find_matching_z2_slot_in_x(self, dest, warehouse, x):
+        for side in range(1, warehouse.num_sides + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for y in range(1, warehouse.num_y + 1):
+                    if not warehouse.is_slot_empty(aisle, side, x, y, 2):
+                        continue
+
+                    z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                    if z1_box and z1_box.get('destination') == dest:
+                        return (aisle, side, x, y, 2)
+        return None
+
+    def _find_zsafe_slot(self, dest, warehouse, x_range):
+        z2_start_x = self._z2_start_x(warehouse)
+
+        for x in x_range:
+            if x >= z2_start_x:
+                z2_slot = self._find_matching_z2_slot_in_x(dest, warehouse, x)
+                if z2_slot:
+                    return z2_slot
+
+            z1_slot = self._find_z1_slot_in_x(dest, warehouse, x)
+            if z1_slot:
+                return z1_slot
+        return None
+
+class ZSafeRWeightedYSafeVarianceAlgorithm(ZSafeRWeightedYSafeAlgorithm):
+    """
+    Reordered weighted Y-safe algorithm with wagon-alignment retrieval.
+
+    Storage prioritizes Y-level carriers closer to X=1. Retrieval only exports
+    a pallet when the best 12 same-destination boxes are sufficiently aligned
+    with the current X positions of their Y-level shuttles.
+    """
+    def __init__(
+        self,
+        max_weighted_backoff=1,
+        max_pairs_per_aisle_height=1,
+        z2_start_x_ratio=0.6,
+        max_avg_squared_wagon_distance=81,
+    ):
+        super().__init__(
+            max_weighted_backoff=max_weighted_backoff,
+            max_pairs_per_aisle_height=max_pairs_per_aisle_height,
+            z2_start_x_ratio=z2_start_x_ratio,
+        )
+        self.max_avg_squared_wagon_distance = max_avg_squared_wagon_distance
+
+    def _y_levels_by_carrier_priority(self, warehouse):
+        return sorted(
+            range(1, warehouse.num_y + 1),
+            key=lambda y: (abs(warehouse.shuttles_x[y] - 1), y)
+        )
+
+    def _find_z1_slot_in_x(self, dest, warehouse, x):
+        y_levels = self._y_levels_by_carrier_priority(warehouse)
+        for side in range(1, warehouse.num_sides + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for y in y_levels:
+                    if not warehouse.is_slot_empty(aisle, side, x, y, 1):
+                        continue
+
+                    pair_count = self._destination_aisle_height_count(dest, warehouse, aisle, y)
+                    if pair_count < self.max_pairs_per_aisle_height:
+                        return (aisle, side, x, y, 1)
+        return None
+
+    def _find_matching_z2_slot_in_x(self, dest, warehouse, x):
+        y_levels = self._y_levels_by_carrier_priority(warehouse)
+        for side in range(1, warehouse.num_sides + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for y in y_levels:
+                    if not warehouse.is_slot_empty(aisle, side, x, y, 2):
+                        continue
+
+                    z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                    if z1_box and z1_box.get('destination') == dest:
+                        return (aisle, side, x, y, 2)
+        return None
+
+    def _avg_squared_wagon_distance(self, items, warehouse):
+        return sum(
+            (coords[2] - warehouse.shuttles_x[coords[3]]) ** 2
+            for coords, _ in items
+        ) / len(items)
+
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        best_items = None
+        best_score = float('inf')
+        for dest, items in dest_groups.items():
+            if len(items) < 12:
+                continue
+
+            candidates = sorted(
+                items,
+                key=lambda item: (
+                    (item[0][2] - warehouse.shuttles_x[item[0][3]]) ** 2,
+                    item[0][4],
+                    item[0][2],
+                )
+            )[:12]
+            score = self._avg_squared_wagon_distance(candidates, warehouse)
+            if score < self.max_avg_squared_wagon_distance and score < best_score:
+                best_score = score
+                best_items = candidates
+
+        if best_items is None:
+            return None
+
+        best_items.sort(key=lambda item: (item[0][4], item[0][2]))
+        return [code for _, code in best_items]
+
 class ZSafeWeightedProAlgorithm(ZSafeWeightedAlgorithm):
     """
     Combines ZSafeWeighted's frequency-aware storage with ZSafePro's

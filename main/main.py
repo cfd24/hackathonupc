@@ -14,11 +14,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-<<<<<<< HEAD
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
-=======
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedProAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
->>>>>>> 2de55c9ea97d4ff77a120c9a79e6d0aac2ff182c
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, ZSafeRWeightedYSafeVarianceAlgorithm, ZSafeWeightedProAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
@@ -28,18 +24,27 @@ AVAILABLE_ALGORITHMS = [
     ("Velocity Column", VelocityColumnAlgorithm),
     ("Velocity Simple", VelocitySimpleAlgorithm),
     ("Z-Safe Simple", ZSafeSimpleAlgorithm),
-<<<<<<< HEAD
-    ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
-    ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
-    ("ZSafe-R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
-=======
     ("Z-Safe Pro", ZSafeProAlgorithm),
     ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
+    ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
+    ("Z-Safe-R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
+    ("Z-Safe-R Weighted Y-Safe Variance", ZSafeRWeightedYSafeVarianceAlgorithm),
     ("Z-Weighted Pro", ZSafeWeightedProAlgorithm),
->>>>>>> 2de55c9ea97d4ff77a120c9a79e6d0aac2ff182c
     ("Destination Zones", DestinationZoneAlgorithm),
     ("Maturity First", MaturityFirstAlgorithm),
 ]
+
+RETIRED_ALGORITHM_NAMES = {
+    "Simple Baseline",
+    "Distance Greedy",
+    "Velocity Column",
+    "Velocity Simple",
+    "Z-Safe Weighted",
+    "Z-Safe Weighted Y-Safe",
+    "Z-Weighted Pro",
+    "Destination Zones",
+    "Maturity First",
+}
 
 # --- SIMULATION CONFIGURATION ---
 BOXES_PER_HOUR = 1000
@@ -103,7 +108,10 @@ def run_sandbox():
     print("Available Algorithms:")
     for i, (name, _) in enumerate(AVAILABLE_ALGORITHMS, 1):
         print(f"  {i}. {name}")
-    print(f"  {len(AVAILABLE_ALGORITHMS) + 1}. Run All (Compare)")
+    run_all_option = len(AVAILABLE_ALGORITHMS) + 1
+    run_active_option = len(AVAILABLE_ALGORITHMS) + 2
+    print(f"  {run_all_option}. Run All (Compare)")
+    print(f"  {run_active_option}. Run All (Compare) Except Retirees")
     
     choice = input("\nSelect an option (enter number): ").strip()
     
@@ -111,8 +119,17 @@ def run_sandbox():
         choice_idx = int(choice)
         if 1 <= choice_idx <= len(AVAILABLE_ALGORITHMS):
             selected_algorithms = [AVAILABLE_ALGORITHMS[choice_idx - 1]]
-        elif choice_idx == len(AVAILABLE_ALGORITHMS) + 1:
+        elif choice_idx == run_all_option:
             selected_algorithms = AVAILABLE_ALGORITHMS
+        elif choice_idx == run_active_option:
+            selected_algorithms = [
+                (name, algo)
+                for name, algo in AVAILABLE_ALGORITHMS
+                if name not in RETIRED_ALGORITHM_NAMES
+            ]
+            if not selected_algorithms:
+                print("No active algorithms available after excluding retirees.")
+                return
         else:
             print("Invalid choice. Exiting.")
             return
@@ -197,16 +214,22 @@ def run_sandbox():
                 continue
                 
             hours = sim.total_time / 3600
-            throughput = sim.boxes_processed / hours if hours > 0 else 0
-            pallet_pct = (sim.sent_pallets * 12 / sim.boxes_processed * 100) if sim.boxes_processed > 0 else 0
+            stored_throughput = sim.boxes_processed / hours if hours > 0 else 0
+            pallet_throughput = sim.sent_pallets / hours if hours > 0 else 0
+            exported_boxes = sim.sent_pallets * 12
+            exported_box_throughput = exported_boxes / hours if hours > 0 else 0
+            pallet_pct = (exported_boxes / sim.boxes_processed * 100) if sim.boxes_processed > 0 else 0
             
             results.append({
                 "name": algo_name,
                 "cap_pct": cap_pct,
                 "sim_time": sim.total_time,
                 "processed": sim.boxes_processed,
+                "exported_boxes": exported_boxes,
                 "pallets": sim.sent_pallets,
-                "throughput": throughput,
+                "stored_throughput": stored_throughput,
+                "exported_box_throughput": exported_box_throughput,
+                "pallet_throughput": pallet_throughput,
                 "pallet_pct": pallet_pct,
                 "relocations": sim.warehouse.relocations,
                 "real_duration": real_duration
@@ -222,12 +245,13 @@ def run_sandbox():
     # Sort by simulation capacity, then time
     results.sort(key=lambda r: (r["cap_pct"], r["sim_time"]))
     
-    header = f"{'Algorithm':<20} | {'Cap %':<5} | {'Sim Time (s)':<12} | {'Processed':<9} | {'Pallets':<7} | {'Throughput/h':<12} | {'Z-Blocks':<9} | {'Real Time':<10}"
+    name_width = max(20, max(len(r["name"]) for r in results))
+    header = f"{'Algorithm':<{name_width}} | {'Cap %':<5} | {'Sim Time (s)':<12} | {'Stored':<7} | {'Exported':<8} | {'Pallets':<7} | {'Stored/h':<10} | {'Exported/h':<10} | {'Pallets/h':<10} | {'Z-Blocks':<9} | {'Real Time':<10}"
     print(header)
     print("-" * len(header))
     
     for r in results:
-        print(f"{r['name']:<20} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
+        print(f"{r['name']:<{name_width}} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<7} | {r['exported_boxes']:<8} | {r['pallets']:<7} | {r['stored_throughput']:<10.1f} | {r['exported_box_throughput']:<10.1f} | {r['pallet_throughput']:<10.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
         
     print("\nSandbox execution finished.")
 

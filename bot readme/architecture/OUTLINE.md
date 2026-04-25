@@ -135,15 +135,12 @@ hackathonupc/
 - **`VelocityColumnAlgorithm`**: Mejora sobre `ColumnGroupingAlgorithm` que aprende dinámicamente la velocidad (frecuencia) de los destinos. Asigna las columnas más cercanas a la puerta (X=1) a los destinos más frecuentes (Fast) y las columnas del fondo (X=60) a los destinos menos frecuentes (Slow).
 - **`VelocitySimpleAlgorithm`**: Aplica la estrategia dinámica de velocidad (Fast=X=1, Slow=X=60) a la lógica de guardado de `SimpleAlgorithm`.
 - **`ZSafeSimpleAlgorithm`**: Mejora sobre `SimpleAlgorithm` que impone compatibilidad de destino en la profundidad Z. Nunca coloca una caja en Z=2 si la caja en Z=1 pertenece a un destino diferente. Esto elimina completamente las penalizaciones por reubicación Z durante la recuperación. La lógica de recuperación ordena por Z ascendente (Z=1 antes que Z=2) para garantizar cero bloqueos.
-<<<<<<< HEAD
+- **`ZSafeProAlgorithm`**: Versión optimizada de `ZSafeSimpleAlgorithm` con tres mejoras: primero busca Z=2 donde Z=1 ya coincide con el destino, luego Z=1 vacíos; elige destinos con X media baja; y prioriza pares Z=1+Z=2 completos.
 - **`ZSafeWeightedAlgorithm`**: Variante Z-safe que aprende online la frecuencia de cada destino. Los destinos con mayor peso observado (`cajas_del_destino / cajas_totales_observadas`) buscan huecos cerca de X=1; los menos frecuentes reciben un retroceso suave y configurable (`max_weighted_backoff`, por defecto 1) que aumenta con la ocupación del almacén. Con `max_weighted_backoff=0`, se comporta como `ZSafeSimpleAlgorithm`.
 - **`ZSafeWeightedYSafeAlgorithm`**: Extiende `ZSafeWeightedAlgorithm` con una restricción adicional y configurable por destino. Permite hasta `max_pairs_per_aisle_height` líneas Z-safe del mismo destino en el mismo `(aisle, Y)` (por defecto 2), y después prefiere usar otras alturas o aisles.
-- **`ZSafeRWeightedYSafeAlgorithm`**: Variante reordenada de `ZSafeWeightedYSafeAlgorithm`. Para cada X recorre primero side, luego aisle y luego Y, repartiendo la presión inicial por la cara frontal del almacén antes de avanzar a posiciones X más profundas.
-=======
-- **`ZSafeProAlgorithm`**: Versión optimizada de `ZSafeSimpleAlgorithm` con tres mejoras: (1) almacenamiento en dos pasadas — primero busca Z=2 donde Z=1 ya coincide con el destino (empaquetado denso), luego Z=1 vacíos; (2) recuperación inteligente — elige el destino con la X media más baja (más cercano a la puerta); (3) selección de cajas por pares Z=1+Z=2 del mismo slot para evitar dejar cajas Z=2 huérfanas.
-- **`ZSafeWeightedAlgorithm`**: Variante Z-safe que aprende online la frecuencia de cada destino. Los destinos con mayor peso observado (`cajas_del_destino / cajas_totales_observadas`) buscan huecos cerca de X=1; los menos frecuentes reciben un retroceso suave y configurable (`max_weighted_backoff`, por defecto 1) que aumenta con la ocupación del almacén. Con `max_weighted_backoff=0`, se comporta como `ZSafeSimpleAlgorithm`.
 - **`ZSafeWeightedProAlgorithm`**: Combina el almacenamiento ponderado por frecuencia de `ZSafeWeightedAlgorithm` con el plan de recuperación inteligente de `ZSafeProAlgorithm`: selecciona el destino con menor X media, prioriza pares Z=1+Z=2 completos y ordena por Z ascendente.
->>>>>>> 2de55c9ea97d4ff77a120c9a79e6d0aac2ff182c
+- **`ZSafeRWeightedYSafeAlgorithm`**: Variante reordenada de `ZSafeWeightedYSafeAlgorithm`. Para cada X recorre primero side, luego aisle y luego Y, repartiendo la presión inicial por la cara frontal del almacén antes de avanzar a posiciones X más profundas. Usa `z2_start_x_ratio` para decidir desde qué X empieza a permitir apilado en Z=2.
+- **`ZSafeRWeightedYSafeVarianceAlgorithm`**: Variante de `ZSafeRWeightedYSafeAlgorithm` que prioriza niveles Y cuyos shuttles están más cerca de X=1 al almacenar. En recuperación solo exporta un pallet si las 12 cajas candidatas están suficientemente alineadas con sus shuttles, usando el umbral `max_avg_squared_wagon_distance`.
 
 ### `main/main.py`
 **Resumen de alto nivel:** Sandbox de prueba de rendimiento.
@@ -156,4 +153,5 @@ Este script es el entorno de pruebas (*sandbox*).
 - **Pide el número de destinos** y genera pesos aleatorios para repartir las cajas entre esos destinos.
 - El flujo de cajas es no determinista por defecto: cada ejecución crea pesos y códigos nuevos, pero los mismos flujos se usan para todos los algoritmos en una misma ejecución para garantizar una comparativa justa.
 - Pasa el tiempo de empaquetado al simulador.
-- Finalmente, pinta una tabla con los resultados (tiempo, pallets enviados y throughput) de todos los algoritmos en cada nivel de capacidad, permitiendo compararlos.
+- Permite ejecutar una comparación completa (`Run All`) o una comparación excluyendo algoritmos retirados (`Run All (Compare) Except Retirees`).
+- Finalmente, pinta una tabla con los resultados (tiempo, cajas almacenadas, cajas exportadas, pallets enviados, cajas almacenadas/hora, cajas exportadas/hora y pallets/hora) de los algoritmos seleccionados en cada nivel de capacidad, permitiendo compararlos.
