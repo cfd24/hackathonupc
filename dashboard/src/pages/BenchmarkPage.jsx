@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import initialData from '../data/benchmark-data.json';
+import initialRealisticData from '../data/realistic-results.json';
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -50,7 +51,7 @@ const Badge = ({ children, variant = 'default' }) => {
 
 export default function BenchmarkPage() {
   const [data, setData] = useState(initialData);
-  const [realisticData, setRealisticData] = useState(null); // New state for realistic data
+  const [realisticData, setRealisticData] = useState(initialRealisticData); // Auto-load default
   const [pastedData, setPastedData] = useState('');
   const [showImporter, setShowImporter] = useState(false);
   const [importerError, setImporterError] = useState('');
