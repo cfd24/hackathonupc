@@ -1,0 +1,22 @@
+Preloading to 75%...
+Running simulation with 1000 boxes...
+
+[SIMULATION] Starting with 1000 incoming boxes...
+[CONFIG] Packing time per pallet: 0s
+
+==================================================
+       SIMULATION PERFORMANCE
+==================================================
+Total Simulation Time : 60889.00s (1014.82 min)
+Boxes Processed       : 1000
+Pallets Waiting Robot : 0
+Pallets Packing       : 0
+Pallets Sent          : 546
+Throughput            : 32.28 pallets/hour
+Full Pallets %        : 655.20%
+Avg Time per Pallet   : 0.00s
+Avg Send Time         : 861.78s
+Robot Utilization     : 0.0%
+==================================================
+
+Simulation finished.

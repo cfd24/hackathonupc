@@ -38,12 +38,13 @@ class Dashboard {
         const btnPlay = document.getElementById('btn-play');
         if (btnPlay) {
             btnPlay.addEventListener('click', async () => {
-                this.addLog("Running dual-algorithm comparison...");
+                const fullness = document.getElementById('fullness-selector').value;
+                this.addLog(`Running comparison (Fullness: ${fullness})...`);
                 try {
                     const response = await fetch('http://localhost:8080/compare', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({boxes: 1000, destinations: 20})
+                        body: JSON.stringify({boxes: 1000, destinations: 20, fullness: fullness})
                     });
                     const data = await response.json();
                     console.log(data);
@@ -60,18 +61,17 @@ class Dashboard {
 
     updateUI(key, result) {
         // Update Metrics
-        document.getElementById(`${key}-time`).textContent = 
-            new Date(result.total_time * 1000).toISOString().substr(11, 8);
-        document.getElementById(`${key}-pallets-hour`).textContent = 
-            result.pallets_per_hour.toFixed(1);
-        document.getElementById(`${key}-pallets`).textContent = 
-            result.pallets_completed;
-        document.getElementById(`${key}-occupancy`).textContent = 
-            (result.occupancy * 100).toFixed(1) + '%';
+        const hours = Math.floor(result.total_time / 3600);
+        const mins = Math.floor((result.total_time % 3600) / 60);
+        const secs = Math.floor(result.total_time % 60);
+        
+        document.getElementById(`${key}-time`).textContent = `${hours}h ${mins}m ${secs}s`;
+        document.getElementById(`${key}-pallets-hour`).textContent = result.pallets_per_hour.toFixed(1);
+        document.getElementById(`${key}-efficiency`).textContent = Math.round(result.full_pallets_pct) + '%';
+        document.getElementById(`${key}-occupancy`).textContent = (result.occupancy * 100).toFixed(1) + '%';
 
-        // Update Boxes and Render
-        this.sims[key].boxes = result.boxes;
-        this.render();
+        // Update Boxes and Render final state
+        this.drawBoxes(key, result.boxes);
     }
 
     resizeCanvases() {

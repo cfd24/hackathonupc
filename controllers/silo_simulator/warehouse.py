@@ -59,34 +59,33 @@ class Warehouse:
         self.box_positions[box_data['code']] = (aisle, side, x, y, z)
         return time_taken
 
-    def find_nearest_free_at_level(self, y, prefer_x, exclude_pos=None):
-        best_pos = None
-        min_dist = float('inf')
-        for aisle in range(1, self.num_aisles + 1):
-            for side in range(1, self.num_sides + 1):
-                for x in range(1, self.num_x + 1):
-                    if exclude_pos and aisle == exclude_pos[0] and side == exclude_pos[1] and x == exclude_pos[2]:
-                        continue
-                    # Check Z=1 first
-                    if self.is_slot_empty(aisle, side, x, y, 1):
-                        dist = abs(x - prefer_x)
-                        if dist < min_dist:
-                            min_dist = dist
-                            best_pos = (aisle, side, x, y, 1)
-                    # Then Z=2 if Z=1 is occupied
-                    elif self.is_slot_empty(aisle, side, x, y, 2):
-                        dist = abs(x - prefer_x)
-                        if dist < min_dist:
-                            min_dist = dist
-                            best_pos = (aisle, side, x, y, 2)
-        return best_pos
+    def find_free_slot_in_aisle_at_level(self, aisle, y, exclude_x=None):
+        for side in range(1, self.num_sides + 1):
+            for x in range(1, self.num_x + 1):
+                if x == exclude_x:
+                    continue
+                if self.is_slot_empty(aisle, side, x, y, 1):
+                    return (aisle, side, x, y, 1)
+                elif self.is_slot_empty(aisle, side, x, y, 2):
+                    return (aisle, side, x, y, 2)
+        return None
 
-    def retrieve_box(self, aisle, side, x, y, z):
+    def find_any_free_slot(self):
+        for aisle in range(1, self.num_aisles + 1):
+            for y in range(1, self.num_y + 1):
+                res = self.find_free_slot_in_aisle_at_level(aisle, y)
+                if res:
+                    return res
+        return None
+
+    def retrieve_box(self, aisle, side, x, y, z, active_destinations=None):
         """Retrieve a box, handling relocation if Z=2 is blocked by Z=1."""
         if self.is_slot_empty(aisle, side, x, y, z):
             raise ValueError(f"Slot ({aisle}, {side}, {x}, {y}, {z}) is empty.")
         
         total_time_taken = 0
+        extra_retrieved = []
+        active_destinations = active_destinations or set()
         
         # Z-constraint: If retrieving Z=2, and Z=1 is occupied, must relocate Z=1
         if z == 2 and not self.is_slot_empty(aisle, side, x, y, 1):
@@ -96,19 +95,44 @@ class Warehouse:
             z1_box = self.grid.pop((aisle, side, x, y, 1))
             self.box_positions.pop(z1_box['code'])
             
-            # 2. Find new spot at same level Y (excluding the current blocked spot)
-            new_pos = self.find_nearest_free_at_level(y, x, exclude_pos=(aisle, side, x))
-            if not new_pos:
-                # Should not happen in semi-empty silo, but handle for safety
+            relocated = False
+            
+            # PRIORITY 1: Deliver to active pallet if destination matches
+            if z1_box.get('destination') in active_destinations:
+                print(f"ACTIVE PALLET RELOCATION: box {z1_box['code']} delivered to X=0 as side-effect.")
+                total_time_taken += self.move_shuttle(y, 0)
+                extra_retrieved.append(z1_box)
+                relocated = True
+            
+            # PRIORITY 2: Move to free slot in same aisle and same Y level
+            if not relocated:
+                new_pos = self.find_free_slot_in_aisle_at_level(aisle, y, exclude_x=x)
+                if new_pos:
+                    # print(f"SAME AISLE RELOCATION: box {z1_box['code']} moved to {new_pos}")
+                    total_time_taken += self.move_shuttle(y, new_pos[2])
+                    self.grid[new_pos] = z1_box
+                    self.box_positions[z1_box['code']] = new_pos
+                    relocated = True
+            
+            # PRIORITY 3: Search for any free slot in the entire warehouse (last resort)
+            if not relocated:
+                any_pos = self.find_any_free_slot()
+                if any_pos:
+                    print(f"CROSS-AISLE RELOCATION: box {z1_box['code']} moved from aisle {aisle} to aisle {any_pos[0]} — verify if legal")
+                    total_time_taken += self.move_shuttle(y, 0) # to exit
+                    total_time_taken += 10 # heuristic for cross-aisle
+                    self.grid[any_pos] = z1_box
+                    self.box_positions[z1_box['code']] = any_pos
+                    relocated = True
+            
+            # PRIORITY 4: Full warehouse
+            if not relocated:
+                print(f"WARNING: No relocation space found, skipping box {z1_box['code']}")
                 self.grid[(aisle, side, x, y, 1)] = z1_box
                 self.box_positions[z1_box['code']] = (aisle, side, x, y, 1)
-                raise ValueError("No space to relocate blocking Z=1 box.")
-            
-            # 3. Drop Z=1 box at new spot
-            total_time_taken += self.move_shuttle(y, new_pos[2])
-            self.grid[new_pos] = z1_box
-            self.box_positions[z1_box['code']] = new_pos
-            
+                # If we couldn't relocate Z=1, we can't get Z=2.
+                return None, total_time_taken, []
+
             # 4. Return to original X to pick up the Z=2 box
             total_time_taken += self.move_shuttle(y, x)
         else:
@@ -116,13 +140,13 @@ class Warehouse:
             total_time_taken += self.move_shuttle(y, x)
 
         # Pick up the target box
-        box_data = self.grid.pop((aisle, side, x, y, z))
-        self.box_positions.pop(box_data['code'])
+        target_box = self.grid.pop((aisle, side, x, y, z))
+        self.box_positions.pop(target_box['code'])
         
         # Finally, shuttle must return to X=0 to deliver the box
         total_time_taken += self.move_shuttle(y, 0)
         
-        return box_data, total_time_taken
+        return target_box, total_time_taken, extra_retrieved
 
     def find_boxes_by_destination(self, destination):
         found = []

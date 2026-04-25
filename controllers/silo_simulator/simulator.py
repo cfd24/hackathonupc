@@ -115,13 +115,27 @@ class Simulator:
             with open(csv_file, mode='r') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    pos = row['position']  # e.g. "01_01_001_01_01"
-                    code = row['box_code']
-                    aisle = int(pos[0:2])
-                    side = int(pos[3:5])
-                    x = int(pos[6:9])
-                    y = int(pos[10:12])
-                    z = int(pos[13:15])
+                    # Column names in silo-semi-empty.csv are 'posicion' and 'etiqueta'
+                    pos = row.get('posicion') or row.get('position')
+                    code = row.get('etiqueta') or row.get('box_code')
+                    
+                    if not pos or not code:
+                        continue
+                        
+                    # Handle format 02010410501 (11 chars) or 01_01_001_01_01 (15 chars)
+                    if len(pos) == 11:
+                        aisle = int(pos[0:2])
+                        side = int(pos[2:4])
+                        x = int(pos[4:7])
+                        y = int(pos[7:9])
+                        z = int(pos[9:11])
+                    else:
+                        aisle = int(pos[0:2])
+                        side = int(pos[3:5])
+                        x = int(pos[6:9])
+                        y = int(pos[10:12])
+                        z = int(pos[13:15])
+                    
                     box_data = self.parse_box_code(code)
                     self.warehouse.store_box(aisle, side, x, y, z, box_data, check_z=False)
             print(f"Initialized warehouse with {len(self.warehouse.grid)} boxes from {csv_file}")
@@ -256,17 +270,17 @@ class Simulator:
                 retrieval_plan = self.algorithm.get_retrieval_plan(self.warehouse)
                 if retrieval_plan:
                     self.active_pallets_count += 1
+                    active_dests = set(self.extracted_boxes.keys())
                     for box_code in retrieval_plan:
                         coords = self.warehouse.box_positions.get(box_code)
                         if coords:
-                            _, t = self.warehouse.retrieve_box(*coords)
+                            target_box, t, extra = self.warehouse.retrieve_box(*coords, active_destinations=active_dests)
                             
-                            # BOX EXTRACTED - add to extracted boxes pool
-                            extracted_box = self.warehouse.grid.get(coords)
-                            if extracted_box is None:
-                                # Box was retrieved, get its destination from the code
-                                dest = box_code[7:15]
-                                self.extracted_boxes[dest].append(box_code)
+                            if target_box:
+                                self.extracted_boxes[target_box['destination']].append(target_box['code'])
+                            
+                            for ex_box in extra:
+                                self.extracted_boxes[ex_box['destination']].append(ex_box['code'])
                     
                     self.active_pallets_count -= 1
                     
@@ -310,7 +324,11 @@ class Simulator:
     def print_metrics(self):
         hours = self.total_time / 3600
         throughput_pallets = self.sent_pallets / hours if hours > 0 else 0
+        
+        # Retrieval efficiency relative to the volume of incoming boxes
         full_pallets_pct = (self.sent_pallets * 12 / self.boxes_processed * 100) if self.boxes_processed > 0 else 0
+        if full_pallets_pct > 100:
+            full_pallets_pct = 100.0 # Cap at 100% as requested by user
         
         # Calculate average times
         avg_pallet_time = sum(self.pallet_times) / len(self.pallet_times) if self.pallet_times else 0
@@ -334,6 +352,7 @@ class Simulator:
         print(f"Avg Time per Pallet   : {avg_pallet_time:.2f}s")
         print(f"Avg Send Time         : {avg_send_time:.2f}s")
         print(f"Robot Utilization     : {robot_utilization:.1f}%")
+        print(f"Relocations           : {self.warehouse.relocations}")
         print("="*50 + "\n")
 
 

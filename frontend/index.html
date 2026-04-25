@@ -13,7 +13,18 @@
             <div class="brand">
                 <h1 class="logo">SILO <span class="accent">COMPARE</span></h1>
             </div>
-            <button id="btn-play" class="btn-primary">RUN COMPARISON</button>
+            <div class="header-controls">
+                <div class="control-group">
+                    <label>Starting Fullness</label>
+                    <select id="fullness-selector">
+                        <option value="empty">Empty (0%)</option>
+                        <option value="low">Low (11.8%)</option>
+                        <option value="medium">Medium (50%)</option>
+                        <option value="high">High (75%)</option>
+                    </select>
+                </div>
+                <button id="btn-play" class="btn-primary">RUN COMPARISON</button>
+            </div>
         </header>
 
         <div class="comparison-layout">
@@ -31,8 +42,8 @@
                             <span id="simple-pallets-hour">—</span>
                         </div>
                         <div class="metric">
-                            <label>Full</label>
-                            <span id="simple-pallets">—</span>
+                            <label>Eff</label>
+                            <span id="simple-efficiency">—</span>
                         </div>
                         <div class="metric">
                             <label>Occ</label>
@@ -62,8 +73,8 @@
                             <span id="greedy-pallets-hour">—</span>
                         </div>
                         <div class="metric">
-                            <label>Full</label>
-                            <span id="greedy-pallets">—</span>
+                            <label>Eff</label>
+                            <span id="greedy-efficiency">—</span>
                         </div>
                         <div class="metric">
                             <label>Occ</label>

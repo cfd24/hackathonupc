@@ -124,3 +124,35 @@ body {
 
 .logo { font-size: 1.2rem; letter-spacing: 2px; }
 .accent { color: var(--accent); text-shadow: 0 0 10px var(--accent-glow); }
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.control-group label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.control-group select {
+    background: var(--bg-main);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.75rem;
+    border-radius: 4px;
+    font-family: 'Outfit', sans-serif;
+    outline: none;
+}
+
+.control-group select:focus {
+    border-color: var(--accent);
+}
