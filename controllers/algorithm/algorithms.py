@@ -89,7 +89,7 @@ class DistanceGreedyAlgorithm(BaseAlgorithm):
             dest = box_data.get('destination')
             if dest not in dest_groups:
                 dest_groups[dest] = []
-            dest_groups[dest].append(coords)
+            dest_groups[dest].append(box_data['code'])
         
         # Return first destination with a full pallet
         for dest, coords_list in dest_groups.items():

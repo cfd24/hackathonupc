@@ -101,7 +101,8 @@ def run_sandbox():
         import contextlib, io
         with contextlib.redirect_stdout(io.StringIO()):
             try:
-                sim.run(test_stream, arrival_rate_per_hour=BOXES_PER_HOUR)
+                arrival_interval = 3600.0 / BOXES_PER_HOUR
+                sim.run(test_stream, real_time=False, arrival_interval=arrival_interval)
                 error = None
             except Exception as e:
                 error = str(e)
