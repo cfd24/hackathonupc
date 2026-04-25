@@ -1,5 +1,7 @@
 # Task Description File Template
 
+If you're an AI, this document is for you.
+
 This document provides the standard structure for creating task description files that agents will use to manage and execute tasks. Each task file should be self-contained and enable any agent to cold-start and take over a task.
 
 ## File Naming Convention
@@ -179,7 +181,7 @@ See `examples/` folder for complete examples of task files following this templa
 ## Best Practices
 
 - **Be Specific**: Use exact file paths, function names, and error messages
-- **Keep Updated**: Update progress after each working session
+- **Keep Updated**: Update progress after each working session. Also remember to update the architecture `bot readme/architecture/OUTLINE.md` and read `bot readme/architecture/README.md` before doing so.
 - **Document Decisions**: Explain why certain approaches were chosen
 - **Think Ahead**: Consider what the next agent will need to know
 - **Use Markdown**: Proper formatting makes files easier to read

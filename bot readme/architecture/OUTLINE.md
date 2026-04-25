@@ -3,32 +3,40 @@
 ## Visión general
 
 Sistema de gestión de almacén automatizado para el reto **HackUPC 2026 (Medieval — Hack the Flow)**.
-El objetivo es minimizar el tiempo total de operación de los shuttles al almacenar y recuperar cajas,
-y entrenar una red neuronal que aprenda a imitar (y mejorar) esas decisiones.
+El objetivo es minimizar el tiempo total de operación de los shuttles al almacenar y recuperar cajas, y entrenar una red neuronal que aprenda a imitar (y mejorar) esas decisiones.
 
-```
-Cajas entrantes
-     │
-     ▼
-algorithms.py ──store_greedy──► Warehouse (grid 3D)
-     │                               │
-     │  recoge datos (estado, acción)│
-     ▼                               ▼
-neural.py ──train──► WarehouseNet   shuttles (uno por nivel Y)
-     │
-     ▼
-main.py (demo: greedy → NN → comparación)
-```
+### Contexto de dominio
 
-Flujo general:
-1. Se crean cajas con código de 20 dígitos.
-2. El algoritmo greedy elige el nivel Y y la posición X más cercana a la cabeza (X=0).
-3. El shuttle del nivel correspondiente se desplaza: cabeza → slot (deposita la caja).
-4. Para recuperar: shuttle → slot (recoge) → cabeza; con relocalización si Z=1 bloquea Z=2.
-5. Los datos (estado del shuttle + ocupación del almacén, decisión tomada) alimentan la red neuronal.
-6. La red aprende a predecir la mejor posición X dada la situación actual del shuttle.
+El sistema simula un centro logístico automatizado donde las cajas llegan desde zonas de clasificación y deben almacenarse dentro de un silo tridimensional. Más adelante, esas cajas deben recuperarse y agruparse en pallets completos según su destino.
 
----
+El sistema trabaja con estos elementos principales:
+`Cajas -> Silo -> Shuttles -> Pallets -> Salida`
+
+#### Flujo general
+1. Llegan cajas al sistema con un código único de 20 dígitos (origen, destino, lote).
+2. El algoritmo decide dónde almacenar cada caja.
+3. Los shuttles transportan las cajas hasta sus posiciones.
+4. Cuando hay suficientes cajas del mismo destino (12 cajas), se reserva un pallet.
+5. El algoritmo decide en qué orden recuperar las cajas, priorizando optimizar el tiempo.
+6. Los shuttles extraen las cajas del silo.
+7. Las cajas se agrupan en pallets y se consideran enviadas. Máximo de 8 pallets activos a la vez.
+
+### Reglas de negocio importantes
+
+#### Arquitectura física del silo
+Cada posición está definida por cinco coordenadas: `(aisle, side, x, y, z)`.
+- **Aisles**: 4
+- **Sides**: 2
+- **X**: 60 posiciones (longitudinal)
+- **Y**: 8 niveles
+- **Z**: 2 profundidades
+
+#### Regla de profundidad Z
+No se puede recuperar directamente una caja en `z=2` si delante de ella, en `z=1`, hay otra caja. Si una caja está bloqueada, primero hay que recolocar la caja bloqueante.
+
+#### Shuttles
+Existe un único shuttle por cada nivel `Y`, encargado tanto de la entrada como de la salida.
+Tiempo de movimiento: `t = 10 + d` (donde 10s es el tiempo fijo de recoger/dejar y `d` es la distancia recorrida en `X`). Todos los shuttles empiezan en `x=0`.
 
 ## Dependencias externas
 
@@ -36,154 +44,66 @@ Flujo general:
 |----------|-----|---------|
 | `numpy`  | Álgebra lineal en la red neuronal (matrices W, b; forward/backward pass) | Solo necesaria para `neural.py` |
 
-La simulación del almacén (`warehouse.py`, `algorithms.py`) es stdlib puro de Python.
-
----
-
 ## Estructura del proyecto
 
-```
+La arquitectura usa un sistema de carpetas para separar responsabilidades lógicas y visuales:
+
+```text
 hackathonupc/
 ├── bot readme/
 │   ├── architecture/
-│   │   ├── OUTLINE.md       ← este archivo (arquitectura viva)
+│   │   ├── OUTLINE.md       ← este archivo (arquitectura viva y central)
 │   │   └── README.md        ← reglas de mantenimiento de la documentación
 │   └── tasks/
-│       └── README.md        ← plantilla para ficheros de tarea
-├── warehouse.py             ← modelos de datos y clase Warehouse
-├── algorithms.py            ← algoritmos greedy + recolección de datos
-├── neural.py                ← red neuronal feedforward (NumPy)
-├── main.py                  ← punto de entrada / demo
-└── requirements.txt         ← numpy>=1.24
+│       └── <fechas>_task.md ← tareas activas de agentes
+├── controllers/             ← Lógica de control, algoritmos y simulación del silo
+│   ├── algorithm/
+│   │   ├── algorithms.py
+│   │   └── neural.py
+│   └── silo_simulator/
+│       ├── simulator.py
+│       └── warehouse.py
+├── main/                    ← Punto de entrada de la aplicación
+│   └── main.py
+├── views/                   ← Representación visual o interfaces (vacío actualmente)
+└── requirements.txt         
 ```
 
----
+## Explicación de cada archivo de código
 
-## Archivos de código
+### `controllers/silo_simulator/warehouse.py`
+**Resumen de alto nivel:** Define todas las estructuras de datos del almacén y la lógica de bajo nivel (colocar/retirar cajas, consultar posiciones, calcular tiempos de shuttle).
 
-### `warehouse.py`
+**Explicación detallada:**
+- **Position** / **Box**: Clases para coordenadas y datos de las cajas.
+- **Shuttle**: Un carro por nivel Y. Calcula el tiempo de viaje con la restricción `10 + |target - current|`.
+- **Warehouse**: Gestiona el grid 3D (`grid`), hace validación de restricciones `Z` y mantiene un lookup inverso de las posiciones de cada caja (`box_positions`).
 
-**Qué hace:** Define todas las estructuras de datos del almacén y la lógica de bajo nivel
-(colocar/retirar cajas, consultar posiciones libres, calcular tiempos de shuttle).
+### `controllers/silo_simulator/simulator.py`
+**Resumen de alto nivel:** Motor que orquesta la simulación usando un algoritmo intercambiable.
 
-**Detalle:**
+**Explicación detallada:** Carga un flujo de cajas (códigos de 20 dígitos), intenta almacenarlas usando el algoritmo provisto y gestiona la formación de pallets (comprobando el límite de 8 pallets activos). Al final, imprime las métricas de éxito (Total Time, Throughput, Full Pallets %).
 
-- **`Position` (dataclass frozen):** coordenada de 5 dimensiones `(aisle, side, x, y, z)`.
-  Convertible a string de 11 dígitos `AA_SS_XXX_YY_ZZ`. Hashable, usada como clave de dict.
+### `controllers/algorithm/algorithms.py`
+**Resumen de alto nivel:** Implementa la estrategia greedy de almacenamiento/recuperación y genera datos de entrenamiento para la IA.
 
-- **`Box` (dataclass):** código de 20 dígitos; propiedades `source`, `destination`, `bulk`.
+**Explicación detallada:**
+- **`store_greedy`**: Mueve el shuttle con menor coste al slot X más cercano a 0.
+- **`retrieve_greedy`**: Recupera caja relocalizando la caja en Z=1 si es necesario.
+- **`collect_training_data`**: Genera vectores de estado de ocupación para alimentar a la red neuronal basándose en las decisiones greedy.
 
-- **`Shuttle`:** un carro por nivel Y. Comienza en `x=0`.
-  Método `travel(target_x)` calcula y acumula `HANDLING_TIME + |current - target|`.
+### `controllers/algorithm/neural.py`
+**Resumen de alto nivel:** Red neuronal feedforward (con NumPy) entrenada por imitación sobre el algoritmo greedy.
 
-- **`Warehouse`:** almacén principal.
-  - `grid: Dict[Position, Box]` — almacenamiento disperso.
-  - `box_positions: Dict[str, Position]` — lookup inverso por código de caja.
-  - `shuttles: Dict[int, Shuttle]` — un shuttle por cada Y de 1 a 8.
-  - `place(box, pos)` — valida restricción Z (no se puede poner en z=2 si z=1 está vacío).
-  - `remove(pos)` — extrae caja del grid.
-  - `free_positions(y)` — lista de posiciones legales en nivel Y.
-  - `occupancy_vector(y, aisle, side)` — vector binario de 120 elementos (entrada de la red neuronal).
+**Explicación detallada:** Arquitectura de 3 capas (Input 121 -> ReLU 64 -> ReLU 32 -> Softmax 60). Aprende a predecir la mejor posición X para dejar la caja. Contiene backprop manual y optimización SGD (`train_step`, `fit`, `predict_x`).
 
-**Constantes:** `AISLES=4, SIDES=2, X_MAX=60, Y_MAX=8, Z_MAX=2, HANDLING_TIME=10`
+### `main/main.py`
+**Resumen de alto nivel:** Punto de entrada o script demo para comparar enfoques.
 
----
+**Explicación detallada:** 
+Orquesta dos fases:
+1. Una simulación de almacenamiento y recuperación usando el algoritmo greedy.
+2. La recolección de datos, entrenamiento de `WarehouseNet` durante 60 épocas, y una comparación del tiempo de operaciones entre la red neuronal y el greedy en un lote nuevo de cajas.
 
-### `algorithms.py`
-
-**Qué hace:** Implementa la estrategia greedy de almacenamiento y recuperación,
-y genera los datos de entrenamiento para la red neuronal.
-
-**Detalle:**
-
-- **`store_greedy(warehouse, box)`:**
-  1. Selecciona el nivel Y cuyo shuttle tiene menor coste estimado (`shuttle.x + nearest_free_x`).
-  2. Dentro de ese Y, elige el slot con X más cercano a 0.
-  3. Mueve el shuttle: 0 (recogida) → slot.x (depósito).
-  Devuelve `(Position, tiempo)`.
-
-- **`retrieve_greedy(warehouse, box_code)`:**
-  1. Localiza la caja vía `box_positions`.
-  2. Si está en `z=2` y `z=1` está ocupado, relocaliza la caja de `z=1` al slot libre más cercano.
-  3. Mueve el shuttle: box.x (recogida) → 0 (entrega a la salida).
-  Devuelve `(Box, tiempo)`.
-
-- **`collect_training_data(num_boxes, seed)`:**
-  Ejecuta la simulación greedy y captura, por cada almacenamiento:
-  - estado: `[shuttle_x / X_MAX, *occupancy_vector(y)]` → vector de 121 floats.
-  - acción: `pos.x - 1` (índice 0-based de la posición X elegida).
-  Devuelve lista de tuplas `(state, target_x_index)` para entrenar la red.
-
----
-
-### `neural.py`
-
-**Qué hace:** Red neuronal feedforward de 3 capas entrenada por imitación (imitation learning)
-sobre las decisiones del algoritmo greedy.
-
-**Arquitectura:**
-
-```
-Entrada (121)  →  Capa 1 ReLU (64)  →  Capa 2 ReLU (32)  →  Salida Softmax (60)
-[shuttle_x_norm, occupancy×120]                              [probabilidad sobre X=1..60]
-```
-
-**Detalle de `WarehouseNet`:**
-
-- Inicialización He (`sqrt(2/fan_in)`) para evitar gradientes que desaparecen.
-- `_forward(x)` → devuelve `(probs, cache)` con activaciones intermedias para backprop.
-- `_backward(cache, target)` → backprop manual con regla de la cadena; gradientes aplicados con SGD.
-- `train_step(state, target_x_index)` → un paso SGD; devuelve la pérdida cross-entropy.
-- `fit(samples, epochs, verbose)` → bucle de entrenamiento sobre los pares greedy;
-  imprime pérdida y accuracy cada 10 épocas.
-- `predict_x(state)` → devuelve el índice X predicho (1-based).
-
-**Limitación conocida:** el vector de ocupación solo cubre `aisle=1, side=1`.
-La red aprende el patrón de llenado del pasillo 1; los demás pasillos se gestionan por greedy.
-Extensión natural: ampliar el vector de estado a todos los pasillos.
-
----
-
-### `main.py`
-
-**Qué hace:** Punto de entrada que orquesta las dos fases y muestra los resultados.
-
-**Fase 1 (greedy demo):**
-- Almacena 100 cajas mostrando posición y tiempo de cada una.
-- Recupera 20 cajas aleatorias.
-- Imprime resumen de tiempos acumulados por shuttle.
-
-**Fase 2 (NN demo):**
-- Llama a `collect_training_data(300)` para generar muestras.
-- Entrena `WarehouseNet` durante 60 épocas.
-- Compara el tiempo total de almacenaje (50 cajas) entre greedy y NN.
-
----
-
-## Flujo de datos resumido
-
-```
-make_box()
-    │
-    ▼
-store_greedy()  ──────────────────────────────────► Warehouse.place()
-    │                                                      │
-    │ captura (state, pos.x-1)                             │
-    ▼                                                      ▼
-collect_training_data()                            Shuttle.travel()
-    │
-    ▼
-WarehouseNet.fit()
-    │
-    ▼
-WarehouseNet.predict_x()  →  Warehouse.place()  →  comparar tiempos
-```
-
----
-
-## Estado actual
-
-- Implementación base completada: almacenamiento, recuperación, red neuronal.
-- La red aprende a imitar al greedy; la comparación de tiempos valida la aproximación.
-- Pendiente: extender vector de estado a todos los pasillos, añadir gestión de pallets
-  (12 cajas × destino, 8 pallets simultáneos), y optimizar selección de nivel Y en la red.
+**Notas:**
+La ubicación actual de dependencias puede requerir ajustar las rutas de importación (`controllers.warehouse` -> `controllers.silo_simulator.warehouse`, etc.).

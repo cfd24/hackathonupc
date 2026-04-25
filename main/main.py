@@ -8,9 +8,9 @@ Usage:
 import random
 import sys
 
-from warehouse import Warehouse, Box, Position, X_MAX, Y_MAX, Z_MAX, AISLES, SIDES
-from algorithms import store_greedy, retrieve_greedy, collect_training_data
-from neural import WarehouseNet
+from controllers.warehouse import Warehouse, Box, Position, X_MAX, Y_MAX, Z_MAX, AISLES, SIDES
+from controllers.algorithms import store_greedy, retrieve_greedy, collect_training_data
+from controllers.algorithm.neural import WarehouseNet
 
 
 # ─────────────────────────────────────────────────────────────────────────────
