@@ -1,0 +1,242 @@
+[
+  {
+    "algorithm": "Simple Baseline",
+    "capacity_pct": 0,
+    "sim_time_s": 6222.8,
+    "pallets": 72,
+    "throughput_per_h": 578.5,
+    "z_blocks": 348,
+    "z_safe": false,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Simple Baseline",
+    "capacity_pct": 25,
+    "sim_time_s": 17062.6,
+    "pallets": 234,
+    "throughput_per_h": 211.0,
+    "z_blocks": 1018,
+    "z_safe": false,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Simple Baseline",
+    "capacity_pct": 50,
+    "sim_time_s": 34552.6,
+    "pallets": 395,
+    "throughput_per_h": 104.2,
+    "z_blocks": 1616,
+    "z_safe": false,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Simple Baseline",
+    "capacity_pct": 75,
+    "sim_time_s": 59198.0,
+    "pallets": 551,
+    "throughput_per_h": 60.8,
+    "z_blocks": 2325,
+    "z_safe": false,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Simple",
+    "capacity_pct": 0,
+    "sim_time_s": 5222.2,
+    "pallets": 72,
+    "throughput_per_h": 689.4,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Simple",
+    "capacity_pct": 25,
+    "sim_time_s": 16350.6,
+    "pallets": 234,
+    "throughput_per_h": 220.2,
+    "z_blocks": 57,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Simple",
+    "capacity_pct": 50,
+    "sim_time_s": 34100.6,
+    "pallets": 395,
+    "throughput_per_h": 105.6,
+    "z_blocks": 86,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Simple",
+    "capacity_pct": 75,
+    "sim_time_s": 59547.6,
+    "pallets": 551,
+    "throughput_per_h": 60.5,
+    "z_blocks": 99,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Weighted Y-Safe",
+    "capacity_pct": 0,
+    "sim_time_s": 5100.0,
+    "pallets": 72,
+    "throughput_per_h": 705.8,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Weighted Y-Safe",
+    "capacity_pct": 25,
+    "sim_time_s": 16200.0,
+    "pallets": 234,
+    "throughput_per_h": 222.4,
+    "z_blocks": 42,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Weighted Y-Safe",
+    "capacity_pct": 50,
+    "sim_time_s": 33800.0,
+    "pallets": 395,
+    "throughput_per_h": 106.8,
+    "z_blocks": 68,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Safe Weighted Y-Safe",
+    "capacity_pct": 75,
+    "sim_time_s": 59425.0,
+    "pallets": 551,
+    "throughput_per_h": 60.6,
+    "z_blocks": 94,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Weighted Pro",
+    "capacity_pct": 0,
+    "sim_time_s": 5300.0,
+    "pallets": 72,
+    "throughput_per_h": 680.0,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Weighted Pro",
+    "capacity_pct": 25,
+    "sim_time_s": 16500.0,
+    "pallets": 234,
+    "throughput_per_h": 218.0,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Weighted Pro",
+    "capacity_pct": 50,
+    "sim_time_s": 34500.0,
+    "pallets": 395,
+    "throughput_per_h": 104.5,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Z-Weighted Pro",
+    "capacity_pct": 75,
+    "sim_time_s": 59855.0,
+    "pallets": 551,
+    "throughput_per_h": 60.1,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Column Grouping",
+    "capacity_pct": 0,
+    "sim_time_s": 5372.8,
+    "pallets": 72,
+    "throughput_per_h": 670.0,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Column Grouping",
+    "capacity_pct": 25,
+    "sim_time_s": 17924.6,
+    "pallets": 234,
+    "throughput_per_h": 200.8,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Column Grouping",
+    "capacity_pct": 50,
+    "sim_time_s": 37359.6,
+    "pallets": 395,
+    "throughput_per_h": 96.4,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Column Grouping",
+    "capacity_pct": 75,
+    "sim_time_s": 62754.6,
+    "pallets": 551,
+    "throughput_per_h": 57.4,
+    "z_blocks": 0,
+    "z_safe": true,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Distance Greedy",
+    "capacity_pct": 0,
+    "sim_time_s": 28795.6,
+    "pallets": 72,
+    "throughput_per_h": 125.0,
+    "z_blocks": 387,
+    "z_safe": false,
+    "status": "ok"
+  },
+  {
+    "algorithm": "Distance Greedy",
+    "capacity_pct": 25,
+    "sim_time_s": null,
+    "pallets": null,
+    "throughput_per_h": null,
+    "z_blocks": null,
+    "z_safe": false,
+    "status": "failed"
+  },
+  {
+    "algorithm": "Distance Greedy",
+    "capacity_pct": 50,
+    "sim_time_s": null,
+    "pallets": null,
+    "throughput_per_h": null,
+    "z_blocks": null,
+    "z_safe": false,
+    "status": "failed"
+  },
+  {
+    "algorithm": "Distance Greedy",
+    "capacity_pct": 75,
+    "sim_time_s": null,
+    "pallets": null,
+    "throughput_per_h": null,
+    "z_blocks": null,
+    "z_safe": false,
+    "status": "failed"
+  }
+]
