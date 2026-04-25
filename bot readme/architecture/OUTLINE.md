@@ -134,6 +134,7 @@ hackathonupc/
 - **`ColumnGroupingAlgorithm`**: Estrategia de alto rendimiento que asigna columnas verticales enteras a destinos específicos. Esto paraleliza masivamente la recuperación de pallets entre varios shuttles y elimina las penalizaciones de la regla de profundidad (Z).
 - **`VelocityColumnAlgorithm`**: Mejora sobre `ColumnGroupingAlgorithm` que aprende dinámicamente la velocidad (frecuencia) de los destinos. Asigna las columnas más cercanas a la puerta (X=1) a los destinos más frecuentes (Fast) y las columnas del fondo (X=60) a los destinos menos frecuentes (Slow).
 - **`VelocitySimpleAlgorithm`**: Aplica la estrategia dinámica de velocidad (Fast=X=1, Slow=X=60) a la lógica de guardado de `SimpleAlgorithm`.
+- **`ZSafeSimpleAlgorithm`**: Mejora sobre `SimpleAlgorithm` que impone compatibilidad de destino en la profundidad Z. Nunca coloca una caja en Z=2 si la caja en Z=1 pertenece a un destino diferente. Esto elimina completamente las penalizaciones por reubicación Z durante la recuperación. La lógica de recuperación ordena por Z ascendente (Z=1 antes que Z=2) para garantizar cero bloqueos.
 
 ### `main/main.py`
 **Resumen de alto nivel:** Sandbox de prueba de rendimiento.

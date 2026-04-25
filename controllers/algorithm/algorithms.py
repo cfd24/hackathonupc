@@ -288,6 +288,51 @@ class VelocitySimpleAlgorithm(SimpleAlgorithm):
                                 return (aisle, side, x, y, z)
         return None
 
+class ZSafeSimpleAlgorithm(BaseAlgorithm):
+    """
+    Improved SimpleBaseline that enforces Z-depth destination compatibility.
+
+    STORAGE: sequential scan like SimpleAlgorithm, but when considering Z=2,
+    it checks that the box already at Z=1 belongs to the SAME destination.
+    If destinations differ, the slot is skipped entirely. This guarantees
+    that no relocation is ever needed during retrieval.
+
+    RETRIEVAL: groups boxes by destination, sorts by Z ascending (Z=1 first)
+    then by X ascending, so the blocking box is always extracted first.
+    """
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+
+        for x in range(1, warehouse.num_x + 1):
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        # Try Z=1 first
+                        if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                            return (aisle, side, x, y, 1)
+
+                        # Try Z=2 only if Z=1 is occupied by the SAME destination
+                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                            if z1_box and z1_box.get('destination') == dest:
+                                return (aisle, side, x, y, 2)
+        return None
+
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        for dest, items in dest_groups.items():
+            if len(items) >= 12:
+                # Sort by Z ascending (extract Z=1 before Z=2), then by X
+                items.sort(key=lambda t: (t[0][4], t[0][2]))
+                return [item[1] for item in items[:12]]
+        return None
+
 class DestinationZoneAlgorithm(BaseAlgorithm):
     """
     Zone-based storage algorithm.
