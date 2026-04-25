@@ -6,7 +6,7 @@ from __future__ import annotations
 import random
 from typing import Optional, Tuple, List
 
-from warehouse import Warehouse, Box, Position, AISLES, SIDES, X_MAX, Y_MAX, Z_MAX
+from controllers.silo_simulator.warehouse_greedy import Warehouse, Box, Position, AISLES, SIDES, X_MAX, Y_MAX, Z_MAX
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

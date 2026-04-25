@@ -7,9 +7,13 @@ Usage:
 """
 import random
 import sys
+import os
 
-from controllers.silo_simulator.warehouse import Warehouse, Box, Position, X_MAX, Y_MAX, Z_MAX, AISLES, SIDES
-from controllers.algorithm.algorithms import store_greedy, retrieve_greedy, collect_training_data
+# Add project root to sys.path so we can import 'controllers'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from controllers.silo_simulator.warehouse_greedy import Warehouse, Box, Position, X_MAX, Y_MAX, Z_MAX, AISLES, SIDES
+from controllers.algorithm.algorithms_greedy import store_greedy, retrieve_greedy, collect_training_data
 from controllers.algorithm.neural import WarehouseNet
 
 
@@ -43,9 +47,9 @@ def run_greedy_demo() -> None:
         pos, t = store_greedy(wh, box)
         if pos:
             store_times.append(t)
-            print(f"  box {box.code}  →  {pos}  ({t:.0f}s)")
+            print(f"  box {box.code}  ->  {pos}  ({t:.0f}s)")
         else:
-            print(f"  box {box.code}  →  WAREHOUSE FULL")
+            print(f"  box {box.code}  ->  WAREHOUSE FULL")
 
     print(f"\n  Boxes stored : {wh.total_boxes()} / {wh.capacity()}")
     print(f"  Total store time : {sum(store_times):.0f}s")
@@ -61,7 +65,7 @@ def run_greedy_demo() -> None:
             retrieve_times.append(t)
             print(f"  box {b.code}  ({t:.0f}s)")
         else:
-            print(f"  box {box.code}  →  NOT FOUND (already retrieved?)")
+            print(f"  box {box.code}  ->  NOT FOUND (already retrieved?)")
 
     print(f"\n  Total retrieve time : {sum(retrieve_times):.0f}s")
     print(f"  Avg  retrieve time  : {sum(retrieve_times)/len(retrieve_times):.1f}s")

@@ -1,4 +1,9 @@
 import time
+import sys
+import os
+
+# Add project root to sys.path so we can import 'controllers'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from controllers.silo_simulator.warehouse import Warehouse
 from controllers.algorithm.algorithms import SimpleAlgorithm
 
