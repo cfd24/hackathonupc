@@ -36,6 +36,7 @@ export default function VisualizerPage() {
   const [speed, setSpeed] = useState(10); 
   const [focusedShuttleY, setFocusedShuttleY] = useState(null);
   const [followShuttle, setFollowShuttle] = useState(true);
+  const [showDisclaimer, setShowDisclaimer] = useState(true);
 
   // Simulation State
   const [grid, setGrid] = useState({}); 
@@ -44,6 +45,7 @@ export default function VisualizerPage() {
   const [logs, setLogs] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeActions, setActiveActions] = useState({}); 
+  const [algoState, setAlgoState] = useState({}); // For Column Grouping etc.
 
   const simTimer = useRef(null);
   const lastLogRef = useRef(null);
@@ -66,17 +68,27 @@ export default function VisualizerPage() {
 
     const totalSlots = AISLES * SIDES * X_POS * Y_LEVELS * Z_DEPTH;
     const numFilled = Math.floor(totalSlots * (startCapacity / 100));
+    const dests = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+    
     let filled = 0;
     while (filled < numFilled) {
       const a = Math.floor(Math.random() * AISLES) + 1;
       const s = Math.floor(Math.random() * SIDES) + 1;
       const x = Math.floor(Math.random() * X_POS) + 1;
       const y = Math.floor(Math.random() * Y_LEVELS) + 1;
+      const dest = dests[Math.floor(Math.random() * dests.length)];
+      
       if (!newGrid[`${a}_${s}_${x}_${y}_1`]) {
-        newGrid[`${a}_${s}_${x}_${y}_1`] = { id: Math.floor(1000 + Math.random() * 9000).toString() };
+        newGrid[`${a}_${s}_${x}_${y}_1`] = { 
+          id: Math.floor(1000 + Math.random() * 9000).toString(),
+          destination: `DEST_${dest}`
+        };
         filled++;
       } else if (!newGrid[`${a}_${s}_${x}_${y}_2`]) {
-        newGrid[`${a}_${s}_${x}_${y}_2`] = { id: Math.floor(1000 + Math.random() * 9000).toString() };
+        newGrid[`${a}_${s}_${x}_${y}_2`] = { 
+          id: Math.floor(1000 + Math.random() * 9000).toString(),
+          destination: `DEST_${dest}`
+        };
         filled++;
       }
     }
@@ -110,12 +122,82 @@ export default function VisualizerPage() {
     setLogs(prev => [{ type, msg, time: timestamp }, ...prev].slice(0, 50));
   }, []);
 
-  const findSlot = useCallback((currentGrid, aisle) => {
+  const findSlotSimple = useCallback((currentGrid, aisle) => {
     for (let x = 1; x <= X_POS; x++) {
       for (let y = 1; y <= Y_LEVELS; y++) {
-        for (let s = 1; s <= SIDES; s++) {
-          if (!currentGrid[`${aisle}_${s}_${x}_${y}_1`]) return { s, x, y, z: 1 };
-          if (!currentGrid[`${aisle}_${s}_${x}_${y}_2`]) return { s, x, y, z: 2 };
+        for (let side = 1; side <= SIDES; side++) {
+          for (let z = 1; z <= Z_DEPTH; z++) {
+            if (!currentGrid[`${aisle}_${side}_${x}_${y}_${z}`]) {
+              if (z === 2 && !currentGrid[`${aisle}_${side}_${x}_${y}_1`]) continue;
+              return { x, y, s: side, z };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }, []);
+
+  const findSlotColumnGrouping = useCallback((currentGrid, aisle, dest, state) => {
+    const destCols = state.dest_columns?.[dest] || [];
+    
+    // 1. Try existing columns
+    for (const colKey of destCols) {
+      const [a, side, x] = colKey.split('_').map(Number);
+      if (a !== aisle) continue;
+      for (let y = 1; y <= Y_LEVELS; y++) {
+        if (!currentGrid[`${a}_${side}_${x}_${y}_1`]) return { x, y, s: side, z: 1 };
+        if (!currentGrid[`${a}_${side}_${x}_${y}_2`]) return { x, y, s: side, z: 2 };
+      }
+    }
+
+    // 2. Find new empty column
+    for (let x = 1; x <= X_POS; x++) {
+      for (let side = 1; side <= SIDES; side++) {
+        let isColEmpty = true;
+        for (let y = 1; y <= Y_LEVELS; y++) {
+          if (currentGrid[`${aisle}_${side}_${x}_${y}_1`] || currentGrid[`${aisle}_${side}_${x}_${y}_2`]) {
+            isColEmpty = false; break;
+          }
+        }
+        if (!isColEmpty) continue;
+
+        // Check if column is assigned to someone else
+        let isAssigned = false;
+        Object.values(state.dest_columns || {}).forEach(cols => {
+          if (cols.includes(`${aisle}_${side}_${x}`)) isAssigned = true;
+        });
+
+        if (!isAssigned) {
+          const colKey = `${aisle}_${side}_${x}`;
+          setAlgoState(prev => ({
+            ...prev,
+            dest_columns: {
+              ...prev.dest_columns,
+              [dest]: [...(prev.dest_columns?.[dest] || []), colKey]
+            }
+          }));
+          return { x, y: 1, s: side, z: 1 };
+        }
+      }
+    }
+
+    // 3. Fallback
+    return findSlotSimple(currentGrid, aisle);
+  }, [findSlotSimple]);
+
+  const findSlotZSafeSimple = useCallback((currentGrid, aisle, dest) => {
+    for (let x = 1; x <= X_POS; x++) {
+      for (let y = 1; y <= Y_LEVELS; y++) {
+        for (let side = 1; side <= SIDES; side++) {
+          // Z=1 first
+          if (!currentGrid[`${aisle}_${side}_${x}_${y}_1`]) return { x, y, s: side, z: 1 };
+          
+          // Z=2 ONLY if Z=1 matches dest
+          if (!currentGrid[`${aisle}_${side}_${x}_${y}_2`]) {
+            const z1Box = currentGrid[`${aisle}_${side}_${x}_${y}_1`];
+            if (z1Box && z1Box.destination === dest) return { x, y, s: side, z: 2 };
+          }
         }
       }
     }
@@ -195,7 +277,7 @@ export default function VisualizerPage() {
             s.heldBox = nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_1`];
             nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_1`] = null;
             // Find relocation spot
-            const relocSpot = findSlot(nextGrid, activeAisle);
+            const relocSpot = findSlotSimple(nextGrid, activeAisle);
             s.state = 'moving';
             s.targetX = relocSpot.x;
             s.subState = 'relocating_blocker';
@@ -217,40 +299,65 @@ export default function VisualizerPage() {
 
       // --- TASK ASSIGNMENT ---
       if (s.state === 'idle') {
+        // Arrivals
         const isArrival = Math.random() * 100 < arrivalRate;
         if (isArrival) {
-          const slot = findSlot(nextGrid, activeAisle);
-          if (slot) {
+          const dests = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+          const dest = `DEST_${dests[Math.floor(Math.random() * dests.length)]}`;
+          
+          let slot = null;
+          if (algoId === 'simple') slot = findSlotSimple(nextGrid, activeAisle);
+          else if (algoId === 'column') slot = findSlotColumnGrouping(nextGrid, activeAisle, dest, algoState);
+          else if (algoId === 'z-safe') slot = findSlotZSafeSimple(nextGrid, activeAisle, dest);
+          else slot = findSlotSimple(nextGrid, activeAisle); // Fallback
+
+          if (slot && slot.y === s.y) {
             s.state = 'moving';
             s.targetX = 0;
             s.subState = 'heading_to_head';
-            s.task = { type: 'inbound', ...slot, boxId: Math.floor(1000 + Math.random() * 9000).toString() };
+            s.task = { 
+              type: 'inbound', ...slot, 
+              boxId: Math.floor(1000 + Math.random() * 9000).toString(),
+              destination: dest
+            };
           }
-        } else {
-          const occupied = [];
-          for (let side = 1; side <= SIDES; side++) {
-            for (let x = 1; x <= X_POS; x++) {
-              if (nextGrid[`${activeAisle}_${side}_${x}_${s.y}_2`]) occupied.push({ s: side, x, y: s.y, z: 2 });
-              else if (nextGrid[`${activeAisle}_${side}_${x}_${s.y}_1`]) occupied.push({ s: side, x, y: s.y, z: 1 });
+        } 
+        // Retrievals (If not doing arrival)
+        if (s.state === 'idle') {
+          // Find any dest with 12+ boxes
+          const destGroups = {};
+          Object.entries(nextGrid).forEach(([key, box]) => {
+            if (box && key.startsWith(`${activeAisle}_`)) {
+              if (!destGroups[box.destination]) destGroups[box.destination] = [];
+              const [a, side, x, y, z] = key.split('_').map(Number);
+              destGroups[box.destination].push({ s: side, x, y, z });
             }
-          }
-          if (occupied.length > 0) {
-            const target = occupied[Math.floor(Math.random() * occupied.length)];
-            const isBlocked = target.z === 2 && nextGrid[`${activeAisle}_${target.s}_${target.x}_${target.y}_1`];
-            
-            if (isBlocked) {
-              s.state = 'moving';
-              s.targetX = target.x;
-              s.subState = 'heading_to_reloc';
-              s.task = { type: 'outbound', ...target };
-            } else {
-              s.state = 'moving';
-              s.targetX = target.x;
-              s.subState = 'heading_to_pick';
-              s.task = { type: 'outbound', ...target };
+          });
+
+          let retrievalTarget = null;
+          Object.entries(destGroups).forEach(([dest, boxes]) => {
+            if (boxes.length >= 12 && !retrievalTarget) {
+              const myLevelBoxes = boxes.filter(b => b.y === s.y);
+              if (myLevelBoxes.length > 0) {
+                // For all verified algos, prioritize Z=1 then X
+                myLevelBoxes.sort((a, b) => {
+                  if (a.z !== b.z) return a.z - b.z;
+                  return a.x - b.x;
+                });
+                retrievalTarget = myLevelBoxes[0];
+              }
             }
+          });
+
+          if (retrievalTarget) {
+            const isBlocked = retrievalTarget.z === 2 && nextGrid[`${activeAisle}_${retrievalTarget.s}_${retrievalTarget.x}_${retrievalTarget.y}_1`];
+            s.state = 'moving';
+            s.targetX = retrievalTarget.x;
+            s.subState = isBlocked ? 'heading_to_reloc' : 'heading_to_pick';
+            s.task = { type: 'outbound', ...retrievalTarget };
           }
         }
+      }
 
         while (s.queue.length < 3) {
           s.queue.push({ 
@@ -260,7 +367,6 @@ export default function VisualizerPage() {
             s: Math.random() > 0.5 ? 'L' : 'R'
           });
         }
-      }
     });
 
     setGrid(nextGrid);
@@ -269,7 +375,7 @@ export default function VisualizerPage() {
     setActiveActions(highlights);
     setTimeout(() => setActiveActions({}), 400);
 
-  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlot]);
+  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlotSimple, findSlotColumnGrouping, findSlotZSafeSimple, algoId, algoState]);
 
   useEffect(() => {
     if (isPlaying) { simTimer.current = setInterval(tick, 1000 / TICKS_PER_SEC); }
@@ -380,17 +486,29 @@ export default function VisualizerPage() {
             </div>
           </section>
 
-          <section className="space-y-6">
+          <section className="space-y-4">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider"><Settings2 className="w-4 h-4" /> Control Panel</div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Strategy Algorithm</label>
+              <select 
+                value={algoId} 
+                onChange={(e) => setAlgoId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 transition-all"
+              >
+                <option value="simple">Simple Baseline ✓</option>
+                <option value="column">Column Grouping ✓</option>
+                <option value="z-safe">Z-Safe Simple ✓</option>
+                <option value="z-weighted">Z-Weighted Pro (demo)</option>
+                <option value="greedy">Distance Greedy (demo)</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setIsPlaying(!isPlaying)} className={cn("py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95", isPlaying ? "bg-slate-800" : "bg-indigo-600 text-white")}>
                   {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />} {isPlaying ? 'Pause' : 'Start'}
                 </button>
                 <button onClick={initWarehouse} className="py-3 bg-slate-900 border border-slate-800 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95"><RotateCcw className="w-5 h-5" /></button>
               </div>
               <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-2 flex justify-between">Travel Speed <span>{speed}x</span></label><input type="range" min="1" max="100" value={speed} onChange={e => setSpeed(parseInt(e.target.value))} className="w-full accent-indigo-500" /></div>
-            </div>
           </section>
 
           <section className="flex-1 overflow-hidden flex flex-col">
@@ -405,9 +523,22 @@ export default function VisualizerPage() {
           </section>
         </aside>
 
-        {/* Main Viewport */}
         <main className="flex-1 p-8 bg-slate-950 relative overflow-hidden flex flex-col">
           
+          {showDisclaimer && (
+            <div className="mb-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between animate-in slide-in-from-top-4 duration-500">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <p className="text-xs font-medium text-amber-200/80">
+                  <span className="font-bold text-amber-500 uppercase mr-2">Disclaimer:</span>
+                  Algorithms marked <span className="text-amber-400 font-bold">✓</span> are exact ports of the Python simulation. Others are demos for visualization only. Official numbers are on the Benchmark Dashboard.
+                </p>
+              </div>
+              <button onClick={() => setShowDisclaimer(false)} className="p-2 hover:bg-amber-500/10 rounded-full transition-colors">
+                <X className="w-4 h-4 text-amber-500" />
+              </button>
+            </div>
+          )}
           {/* FOCUS MODE OVERLAY */}
           {focusedShuttleY !== null && focusedShuttle && (
             <div className="absolute inset-0 bg-[#020617]/98 z-40 p-8 flex flex-col animate-in fade-in duration-300 overflow-hidden">
@@ -436,11 +567,11 @@ export default function VisualizerPage() {
                       <div key={`L${x}`} className="h-40 border border-slate-800/50 flex transition-all duration-300">
                         <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z1</span>
-                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-500/60">{z1.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                         <div className={cn("flex-1 p-2 flex flex-col items-center justify-center gap-1", z2 ? "bg-indigo-500/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z2</span>
-                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-400/60">{z2.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                       </div>
                     );
@@ -471,11 +602,11 @@ export default function VisualizerPage() {
                       <div key={`R${x}`} className="h-40 border border-slate-800/50 flex transition-all duration-300">
                         <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z1</span>
-                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-500/60">{z1.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                         <div className={cn("flex-1 p-2 flex flex-col items-center justify-center gap-1", z2 ? "bg-indigo-500/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z2</span>
-                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-400/60">{z2.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                       </div>
                     );
