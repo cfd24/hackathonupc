@@ -333,6 +333,109 @@ class ZSafeSimpleAlgorithm(BaseAlgorithm):
                 return [item[1] for item in items[:12]]
         return None
 
+class ZSafeWeightedAlgorithm(ZSafeSimpleAlgorithm):
+    """
+    Learns observed destination frequency and stores frequent destinations near X=1.
+
+    Frequency is inferred online from boxes seen so far. Less frequent
+    destinations get a small tunable backoff from the front instead of being
+    spread across the full warehouse width.
+    """
+    def __init__(self, max_weighted_backoff=1):
+        super().__init__()
+        self.dest_counts = {}
+        self.total_boxes = 0
+        self.max_weighted_backoff = max_weighted_backoff
+
+    def _warehouse_fullness(self, warehouse):
+        total_capacity = (
+            warehouse.num_aisles
+            * warehouse.num_sides
+            * warehouse.num_x
+            * warehouse.num_y
+            * warehouse.num_z
+        )
+        return len(warehouse.grid) / total_capacity if total_capacity else 0
+
+    def _target_x_for_destination(self, dest, warehouse):
+        if self.total_boxes == 0 or len(self.dest_counts) <= 1:
+            return 1
+
+        frequencies = [
+            count / self.total_boxes
+            for count in self.dest_counts.values()
+        ]
+        min_frequency = min(frequencies)
+        max_frequency = max(frequencies)
+        if min_frequency == max_frequency:
+            return 1
+
+        frequency = self.dest_counts[dest] / self.total_boxes
+        rarity = (max_frequency - frequency) / (max_frequency - min_frequency)
+        fullness = self._warehouse_fullness(warehouse)
+        effective_backoff = self.max_weighted_backoff * (0.25 + 0.75 * fullness)
+        backoff = round(rarity * effective_backoff)
+
+        return min(warehouse.num_x, 1 + backoff)
+
+    def _x_positions_by_distance(self, target_x, warehouse):
+        return sorted(
+            range(1, warehouse.num_x + 1),
+            key=lambda x: (abs(x - target_x), x)
+        )
+
+    def _find_matching_z2_slot(self, dest, warehouse, x_range):
+        for x in x_range:
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                            if z1_box and z1_box.get('destination') == dest:
+                                return (aisle, side, x, y, 2)
+        return None
+
+    def _find_zsafe_slot(self, dest, warehouse, x_range):
+        for x in x_range:
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                            return (aisle, side, x, y, 1)
+                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                            if z1_box and z1_box.get('destination') == dest:
+                                return (aisle, side, x, y, 2)
+        return None
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        self.dest_counts[dest] = self.dest_counts.get(dest, 0) + 1
+        self.total_boxes += 1
+
+        if self.max_weighted_backoff <= 0:
+            return super().get_storage_location(box_data, warehouse)
+
+        target_x = self._target_x_for_destination(dest, warehouse)
+
+        front_window_end = min(
+            warehouse.num_x,
+            target_x + self.max_weighted_backoff
+        )
+        front_window = range(1, front_window_end + 1)
+
+        matching_stack = self._find_matching_z2_slot(dest, warehouse, front_window)
+        if matching_stack:
+            return matching_stack
+
+        weighted_range = range(target_x, warehouse.num_x + 1)
+        weighted_slot = self._find_zsafe_slot(dest, warehouse, weighted_range)
+        if weighted_slot:
+            return weighted_slot
+
+        fallback_range = range(1, target_x)
+        return self._find_zsafe_slot(dest, warehouse, fallback_range)
+
 class DestinationZoneAlgorithm(BaseAlgorithm):
     """
     Zone-based storage algorithm.

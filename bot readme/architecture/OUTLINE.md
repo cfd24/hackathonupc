@@ -135,6 +135,7 @@ hackathonupc/
 - **`VelocityColumnAlgorithm`**: Mejora sobre `ColumnGroupingAlgorithm` que aprende dinámicamente la velocidad (frecuencia) de los destinos. Asigna las columnas más cercanas a la puerta (X=1) a los destinos más frecuentes (Fast) y las columnas del fondo (X=60) a los destinos menos frecuentes (Slow).
 - **`VelocitySimpleAlgorithm`**: Aplica la estrategia dinámica de velocidad (Fast=X=1, Slow=X=60) a la lógica de guardado de `SimpleAlgorithm`.
 - **`ZSafeSimpleAlgorithm`**: Mejora sobre `SimpleAlgorithm` que impone compatibilidad de destino en la profundidad Z. Nunca coloca una caja en Z=2 si la caja en Z=1 pertenece a un destino diferente. Esto elimina completamente las penalizaciones por reubicación Z durante la recuperación. La lógica de recuperación ordena por Z ascendente (Z=1 antes que Z=2) para garantizar cero bloqueos.
+- **`ZSafeWeightedAlgorithm`**: Variante Z-safe que aprende online la frecuencia de cada destino. Los destinos con mayor peso observado (`cajas_del_destino / cajas_totales_observadas`) buscan huecos cerca de X=1; los menos frecuentes reciben un retroceso suave y configurable (`max_weighted_backoff`, por defecto 1) que aumenta con la ocupación del almacén. Con `max_weighted_backoff=0`, se comporta como `ZSafeSimpleAlgorithm`.
 
 ### `main/main.py`
 **Resumen de alto nivel:** Sandbox de prueba de rendimiento.
