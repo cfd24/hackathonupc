@@ -96,3 +96,86 @@ class DistanceGreedyAlgorithm(BaseAlgorithm):
             if len(coords_list) >= 12:
                 return coords_list[:12]
         return None
+
+class ColumnGroupingAlgorithm(BaseAlgorithm):
+    """
+    Optimizes retrieval by dedicating entire columns (same Aisle, Side, X across all Y levels)
+    to a single destination. This maximizes parallel retrieval across shuttles and ensures
+    Z-depth penalties are avoided by sorting the retrieval plan.
+    """
+    def __init__(self):
+        # destination -> list of assigned columns: (aisle, side, x)
+        self.dest_columns = {}
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        if dest not in self.dest_columns:
+            self.dest_columns[dest] = []
+
+        # Try to find an empty slot in the assigned columns
+        for col in self.dest_columns[dest]:
+            aisle, side, x = col
+            for y in range(1, warehouse.num_y + 1):
+                # Must fill Z=1 before Z=2
+                if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                    return (aisle, side, x, y, 1)
+                elif warehouse.is_slot_empty(aisle, side, x, y, 2):
+                    return (aisle, side, x, y, 2)
+
+        # Need a new column
+        new_col = None
+        for x in range(1, warehouse.num_x + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for side in range(1, warehouse.num_sides + 1):
+                    is_empty = True
+                    for y in range(1, warehouse.num_y + 1):
+                        if not warehouse.is_slot_empty(aisle, side, x, y, 1) or not warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            is_empty = False
+                            break
+                    if not is_empty:
+                        continue
+                    
+                    is_assigned = False
+                    for cols in self.dest_columns.values():
+                        if (aisle, side, x) in cols:
+                            is_assigned = True
+                            break
+                    
+                    if not is_assigned:
+                        new_col = (aisle, side, x)
+                        break
+                if new_col: break
+            if new_col: break
+
+        if new_col:
+            self.dest_columns[dest].append(new_col)
+            aisle, side, x = new_col
+            return (aisle, side, x, 1, 1)
+
+        # Fallback: simple algorithm behavior if no empty columns exist
+        for x in range(1, warehouse.num_x + 1):
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        for z in (1, 2):
+                            if warehouse.is_slot_empty(aisle, side, x, y, z):
+                                if z == 2 and warehouse.is_slot_empty(aisle, side, x, y, 1):
+                                    continue
+                                return (aisle, side, x, y, z)
+        return None
+
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        for dest, items in dest_groups.items():
+            if len(items) >= 12:
+                # Sort primarily by Z (ascending) to guarantee Z=1 is picked before Z=2
+                # Sort secondarily by X (ascending) to clear columns closest to the door first
+                items.sort(key=lambda x: (x[0][4], x[0][2]))
+                return [item[1] for item in items[:12]]
+        return None
