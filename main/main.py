@@ -14,24 +14,39 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-from controllers.algorithm.algorithms import SimpleAlgorithm
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
     ("Simple Baseline", SimpleAlgorithm),
+    ("Distance Greedy", DistanceGreedyAlgorithm),
 ]
 
+# --- SIMULATION CONFIGURATION ---
+BOXES_PER_HOUR = 1000
+TOTAL_DESTINATIONS = 5
+
+# Destination weights define the probability of a box going to a specific destination.
+DESTINATION_WEIGHTS = {
+    "10000001": 0.40,  # 40% of boxes
+    "10000002": 0.25,  # 25% of boxes
+    "10000003": 0.20,  # 20% of boxes
+    "10000004": 0.10,  # 10% of boxes
+    "10000005": 0.05,  #  5% of boxes
+}
+# --------------------------------
+
 def generate_box_stream(num_boxes: int, seed: int = 42) -> list[str]:
-    """Generate a reproducible stream of random 20-digit box codes."""
+    """Generate a reproducible stream of random 20-digit box codes based on configured weights."""
     rng = random.Random(seed)
     boxes = []
     
-    # We create a few "hot" destinations so pallets actually get completed
-    destinations = [f"{rng.randint(10_000_000, 99_999_999)}" for _ in range(20)]
+    dests = list(DESTINATION_WEIGHTS.keys())
+    weights = list(DESTINATION_WEIGHTS.values())
     
     for i in range(num_boxes):
         src  = f"{rng.randint(1_000_000, 9_999_999)}"
-        dest = rng.choice(destinations)
+        dest = rng.choices(dests, weights=weights, k=1)[0]
         bulk = f"{i:05d}"
         boxes.append(f"{src}{dest}{bulk}")
         
@@ -45,14 +60,34 @@ def print_banner(title: str) -> None:
 def run_sandbox():
     print_banner("Algorithm Sandbox initialized")
     
+    print("Available Algorithms:")
+    for i, (name, _) in enumerate(AVAILABLE_ALGORITHMS, 1):
+        print(f"  {i}. {name}")
+    print(f"  {len(AVAILABLE_ALGORITHMS) + 1}. Run All (Compare)")
+    
+    choice = input("\nSelect an option (enter number): ").strip()
+    
+    try:
+        choice_idx = int(choice)
+        if 1 <= choice_idx <= len(AVAILABLE_ALGORITHMS):
+            selected_algorithms = [AVAILABLE_ALGORITHMS[choice_idx - 1]]
+        elif choice_idx == len(AVAILABLE_ALGORITHMS) + 1:
+            selected_algorithms = AVAILABLE_ALGORITHMS
+        else:
+            print("Invalid choice. Exiting.")
+            return
+    except ValueError:
+        print("Invalid input. Exiting.")
+        return
+        
     # Configuration
     NUM_BOXES = 1000
-    print(f"Generating {NUM_BOXES} boxes for testing...")
+    print(f"\nGenerating {NUM_BOXES} boxes for testing...")
     test_stream = generate_box_stream(NUM_BOXES)
     
     results = []
     
-    for algo_name, AlgoClass in AVAILABLE_ALGORITHMS:
+    for algo_name, AlgoClass in selected_algorithms:
         print(f"\n[RUNNING] Algorithm: {algo_name}")
         
         # Instantiate fresh algorithm and simulator
@@ -66,7 +101,7 @@ def run_sandbox():
         import contextlib, io
         with contextlib.redirect_stdout(io.StringIO()):
             try:
-                sim.run(test_stream)
+                sim.run(test_stream, arrival_rate_per_hour=BOXES_PER_HOUR)
                 error = None
             except Exception as e:
                 error = str(e)

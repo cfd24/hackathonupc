@@ -37,11 +37,16 @@ class Simulator:
             'code': code
         }
 
-    def run(self, box_codes):
+    def run(self, box_codes, arrival_rate_per_hour=None):
         print(f"Starting simulation with {len(box_codes)} boxes...")
+        
+        arrival_interval = (3600.0 / arrival_rate_per_hour) if arrival_rate_per_hour else 0.0
         
         # Process input stream
         for code in box_codes:
+            if arrival_interval > 0:
+                self.warehouse.global_time += arrival_interval
+                
             box_data = self.parse_box_code(code)
             
             # 1. Storage
