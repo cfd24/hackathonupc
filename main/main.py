@@ -214,11 +214,6 @@ def run_sandbox():
     
     for r in results:
         print(f"{r['name']:<20} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
-    print(header)
-    print("-" * len(header))
-    
-    for r in results:
-        print(f"{r['name']:<20} | {r['sim_time']:<12.1f} | {r['processed']:<9} | {r['pallets']:<7} | {r['throughput']:<12.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
         
     print("\nSandbox execution finished.")
 
