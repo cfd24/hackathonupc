@@ -17,8 +17,8 @@ from controllers.silo_simulator.simulator import Simulator
 from controllers.algorithm.algorithms import (
     SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, 
     VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, 
-    ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedYSafeAlgorithm, 
-    ZSafeRWeightedYSafeAlgorithm, ZSafeWeightedProAlgorithm, 
+    ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedProAlgorithm, 
+    ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, 
     DestinationZoneAlgorithm, MaturityFirstAlgorithm
 )
 
