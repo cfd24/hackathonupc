@@ -14,7 +14,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeProAlgorithm, ZSafeWeightedAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedProAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
@@ -26,6 +26,7 @@ AVAILABLE_ALGORITHMS = [
     ("Z-Safe Simple", ZSafeSimpleAlgorithm),
     ("Z-Safe Pro", ZSafeProAlgorithm),
     ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
+    ("Z-Weighted Pro", ZSafeWeightedProAlgorithm),
     ("Destination Zones", DestinationZoneAlgorithm),
     ("Maturity First", MaturityFirstAlgorithm),
 ]
