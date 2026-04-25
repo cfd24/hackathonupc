@@ -135,11 +135,9 @@ hackathonupc/
 - **`VelocityColumnAlgorithm`**: Mejora sobre `ColumnGroupingAlgorithm` que aprende dinámicamente la velocidad (frecuencia) de los destinos. Asigna las columnas más cercanas a la puerta (X=1) a los destinos más frecuentes (Fast) y las columnas del fondo (X=60) a los destinos menos frecuentes (Slow).
 - **`VelocitySimpleAlgorithm`**: Aplica la estrategia dinámica de velocidad (Fast=X=1, Slow=X=60) a la lógica de guardado de `SimpleAlgorithm`.
 - **`ZSafeSimpleAlgorithm`**: Mejora sobre `SimpleAlgorithm` que impone compatibilidad de destino en la profundidad Z. Nunca coloca una caja en Z=2 si la caja en Z=1 pertenece a un destino diferente. Esto elimina completamente las penalizaciones por reubicación Z durante la recuperación. La lógica de recuperación ordena por Z ascendente (Z=1 antes que Z=2) para garantizar cero bloqueos.
-<<<<<<< HEAD
 - **`ZSafeWeightedAlgorithm`**: Variante Z-safe que aprende online la frecuencia de cada destino. Los destinos con mayor peso observado (`cajas_del_destino / cajas_totales_observadas`) buscan huecos cerca de X=1; los menos frecuentes reciben un retroceso suave y configurable (`max_weighted_backoff`, por defecto 1) que aumenta con la ocupación del almacén. Con `max_weighted_backoff=0`, se comporta como `ZSafeSimpleAlgorithm`.
-=======
-- **`MixAlgorithm`**: Fusión de `ColumnGroupingAlgorithm` y `ZSafeSimpleAlgorithm`. Dedica columnas verticales enteras a cada destino (permitiendo recuperación paralela con los 8 shuttles) y además impone la regla Z-safe en el camino de fallback (cuando no quedan columnas vacías). Combina cero relocaciones Z con máximo paralelismo de shuttles.
->>>>>>> c7ad790274ba86a6f2ae6a87880ee281987d7901
+- **`ZSafeWeightedYSafeAlgorithm`**: Extiende `ZSafeWeightedAlgorithm` con una restricción adicional y configurable por destino. Permite hasta `max_pairs_per_aisle_height` líneas Z-safe del mismo destino en el mismo `(aisle, Y)` (por defecto 2), y después prefiere usar otras alturas o aisles.
+- **`ZSafeRWeightedYSafeAlgorithm`**: Variante reordenada de `ZSafeWeightedYSafeAlgorithm`. Para cada X recorre primero side, luego aisle y luego Y, repartiendo la presión inicial por la cara frontal del almacén antes de avanzar a posiciones X más profundas.
 
 ### `main/main.py`
 **Resumen de alto nivel:** Sandbox de prueba de rendimiento.

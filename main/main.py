@@ -14,11 +14,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from controllers.silo_simulator.simulator import Simulator
-<<<<<<< HEAD
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeWeightedAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
-=======
-from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, MixAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
->>>>>>> c7ad790274ba86a6f2ae6a87880ee281987d7901
+from controllers.algorithm.algorithms import SimpleAlgorithm, DistanceGreedyAlgorithm, ColumnGroupingAlgorithm, VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, DestinationZoneAlgorithm, MaturityFirstAlgorithm
 
 # Import new algorithms here as you build them
 AVAILABLE_ALGORITHMS = [
@@ -28,11 +24,9 @@ AVAILABLE_ALGORITHMS = [
     ("Velocity Column", VelocityColumnAlgorithm),
     ("Velocity Simple", VelocitySimpleAlgorithm),
     ("Z-Safe Simple", ZSafeSimpleAlgorithm),
-<<<<<<< HEAD
     ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
-=======
-    ("Mix Algorithm", MixAlgorithm),
->>>>>>> c7ad790274ba86a6f2ae6a87880ee281987d7901
+    ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
+    ("ZSafe-R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
     ("Destination Zones", DestinationZoneAlgorithm),
     ("Maturity First", MaturityFirstAlgorithm),
 ]

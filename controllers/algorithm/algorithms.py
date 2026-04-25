@@ -436,6 +436,140 @@ class ZSafeWeightedAlgorithm(ZSafeSimpleAlgorithm):
         fallback_range = range(1, target_x)
         return self._find_zsafe_slot(dest, warehouse, fallback_range)
 
+class ZSafeWeightedYSafeAlgorithm(ZSafeWeightedAlgorithm):
+    """
+    ZSafeWeightedAlgorithm plus same-destination Y/aisle separation.
+
+    Same-destination boxes may stack in a Z-safe lane. New Z=1 lanes are only
+    opened while that destination remains below the configured lane count for
+    the same aisle and Y.
+    """
+    def __init__(self, max_weighted_backoff=1, max_pairs_per_aisle_height=2):
+        super().__init__(max_weighted_backoff=max_weighted_backoff)
+        self.max_pairs_per_aisle_height = max_pairs_per_aisle_height
+
+    def _destination_aisle_height_count(self, dest, warehouse, aisle, y):
+        count_map = getattr(self, "_ysafe_pair_counts", None)
+        if count_map is not None:
+            return count_map.get((aisle, y), 0)
+
+        return sum(
+            1
+            for coords, box_data in warehouse.grid.items()
+            if coords[0] == aisle
+            and coords[3] == y
+            and coords[4] == 1
+            and box_data.get('destination') == dest
+        )
+
+    def _build_aisle_height_counts(self, dest, warehouse):
+        counts = {}
+        for coords, box_data in warehouse.grid.items():
+            if coords[4] != 1 or box_data.get('destination') != dest:
+                continue
+
+            key = (coords[0], coords[3])
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    def _find_zsafe_slot(self, dest, warehouse, x_range):
+        for x in x_range:
+            for y in range(1, warehouse.num_y + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for side in range(1, warehouse.num_sides + 1):
+                        if warehouse.is_slot_empty(aisle, side, x, y, 1):
+                            pair_count = self._destination_aisle_height_count(dest, warehouse, aisle, y)
+                            if pair_count < self.max_pairs_per_aisle_height:
+                                return (aisle, side, x, y, 1)
+                            continue
+
+                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                            if z1_box and z1_box.get('destination') == dest:
+                                return (aisle, side, x, y, 2)
+        return None
+
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        self.dest_counts[dest] = self.dest_counts.get(dest, 0) + 1
+        self.total_boxes += 1
+
+        self._ysafe_pair_counts = self._build_aisle_height_counts(dest, warehouse)
+        try:
+            target_x = 1
+            if self.max_weighted_backoff > 0:
+                target_x = self._target_x_for_destination(dest, warehouse)
+
+            front_window_end = min(
+                warehouse.num_x,
+                target_x + self.max_weighted_backoff
+            )
+            front_window = range(1, front_window_end + 1)
+
+            matching_stack = self._find_matching_z2_slot(dest, warehouse, front_window)
+            if matching_stack:
+                return matching_stack
+
+            weighted_range = range(target_x, warehouse.num_x + 1)
+            weighted_slot = self._find_zsafe_slot(dest, warehouse, weighted_range)
+            if weighted_slot:
+                return weighted_slot
+
+            fallback_range = range(1, target_x)
+            return self._find_zsafe_slot(dest, warehouse, fallback_range)
+        finally:
+            self._ysafe_pair_counts = None
+
+class ZSafeRWeightedYSafeAlgorithm(ZSafeWeightedYSafeAlgorithm):
+    """
+    Reordered Z-safe weighted Y-safe algorithm.
+
+    Candidate slots are scanned by X, then side, then aisle, then Y to spread
+    early placements across the front face before moving deeper into X.
+    """
+    def get_storage_location(self, box_data, warehouse):
+        dest = box_data.get('destination')
+        self.dest_counts[dest] = self.dest_counts.get(dest, 0) + 1
+        self.total_boxes += 1
+
+        self._ysafe_pair_counts = self._build_aisle_height_counts(dest, warehouse)
+        try:
+            target_x = 1
+            if self.max_weighted_backoff > 0:
+                target_x = self._target_x_for_destination(dest, warehouse)
+
+            weighted_range = range(target_x, warehouse.num_x + 1)
+            weighted_slot = self._find_zsafe_slot(dest, warehouse, weighted_range)
+            if weighted_slot:
+                return weighted_slot
+
+            fallback_range = range(1, target_x)
+            return self._find_zsafe_slot(dest, warehouse, fallback_range)
+        finally:
+            self._ysafe_pair_counts = None
+
+    def _find_zsafe_slot(self, dest, warehouse, x_range):
+        for x in x_range:
+            for side in range(1, warehouse.num_sides + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for y in range(1, warehouse.num_y + 1):
+                        if not warehouse.is_slot_empty(aisle, side, x, y, 1):
+                            continue
+
+                        pair_count = self._destination_aisle_height_count(dest, warehouse, aisle, y)
+                        if pair_count < self.max_pairs_per_aisle_height:
+                            return (aisle, side, x, y, 1)
+
+        for x in x_range:
+            for side in range(1, warehouse.num_sides + 1):
+                for aisle in range(1, warehouse.num_aisles + 1):
+                    for y in range(1, warehouse.num_y + 1):
+                        if warehouse.is_slot_empty(aisle, side, x, y, 2):
+                            z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                            if z1_box and z1_box.get('destination') == dest:
+                                return (aisle, side, x, y, 2)
+        return None
+
 class DestinationZoneAlgorithm(BaseAlgorithm):
     """
     Zone-based storage algorithm.
