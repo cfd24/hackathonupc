@@ -39,6 +39,29 @@ No se puede recuperar directamente una caja en `z=2` si delante de ella, en `z=1
 Existe un único shuttle por cada nivel `Y`, encargado tanto de la entrada como de la salida.
 Tiempo de movimiento: `t = 10 + d` (donde 10s es el tiempo fijo de recoger/dejar y `d` es la distancia recorrida en `X`). Todos los shuttles empiezan en `x=0`.
 
+#### Sistema de Robots de Paletización
+El sistema incluye **2 robots** de paletización, cada uno con **4 slots de procesamiento**, permitiendo un máximo de **8 pallets simultáneos** en empaquetado.
+
+**Estados de un pallet:**
+1. **Caja extraída**: La caja salió del silo (x=0)
+2. **Pallet listo**: Hay 12 cajas extraídas del mismo Destination esperando robot
+3. **Pallet en empaquetado**: Un robot está trabajando en él
+4. **Pallet enviado**: El robot terminó el empaquetado
+
+**Flujo de procesamiento:**
+1. Las cajas se extraen del silo
+2. Las cajas extraídas se agrupan por Destination
+3. Cuando hay 12 cajas del mismo destino → pallet listo
+4. Si hay slot libre en algún robot → pallet pasa a empaquetarse
+5. El empaquetado tarda X segundos (configurable como input)
+6. Cuando termina → pallet enviado
+7. Si no hay slots → pallet espera en cola
+
+**Tiempo de empaquetado:**
+- Configurable como input al ejecutar el programa
+- Debe ser un entero >= 0
+- Ejemplo: `Introduce el tiempo de empaquetado por pallet en segundos:`
+
 ## Dependencias externas
 
 Actualmente, no hay dependencias externas. La simulación utiliza librerías nativas de Python (`sys`, `os`, `time`, `random`).
@@ -77,9 +100,29 @@ hackathonupc/
 - **Warehouse**: Gestiona el grid 3D (`grid`), hace validación de restricciones `Z`.
 
 ### `controllers/silo_simulator/simulator.py`
-**Resumen de alto nivel:** Motor que orquesta la simulación usando un algoritmo intercambiable.
+**Resumen de alto nivel:** Motor que orquesta la simulación usando un algoritmo intercambiable, incluyendo el sistema de robots de paletización.
 
-**Explicación detallada:** Carga un flujo de cajas (códigos de 20 dígitos), intenta almacenarlas usando el algoritmo provisto y gestiona la formación de pallets (comprobando el límite de 8 pallets activos). Al final, contabiliza el tiempo (`total_time = max(shuttles_time)`) y calcula las métricas de éxito (Total Time, Throughput, Full Pallets %).
+**Explicación detallada:** 
+- Carga un flujo de cajas (códigos de 20 dígitos), intenta almacenarlas usando el algoritmo provisto
+- Gestiona la extracción de cajas y formación de pallets (12 cajas del mismo Destination)
+- **Sistema de Robots**: 
+  - 2 robots con 4 slots cada uno (clase `Robot`)
+  - Asigna pallets a slots libres cuando disponibles
+  - Procesa el empaquetado con tiempo configurable
+- **Gestión de estados**: 
+  - `extracted_boxes`: Cajas extraídas esperando formar pallet
+  - `ready_pallets`: Pallets listos (12 cajas) esperando robot
+  - `packing_pallets`: Pallets en proceso de empaquetado
+  - `sent_pallets`: Pallets que finished el empaquetado
+- Al final, contabiliza el tiempo total como el máximo entre los shuttles, el reloj global y la última finalización de robot, y calcula las métricas de éxito
+
+**Métricas del sistema:**
+- `boxes_processed`: Cajas almacenadas
+- `pallets_waiting_count`: Pallets listos esperando slot libre
+- `pallets_packing_count`: Pallets en proceso de empaquetado
+- `sent_pallets`: Pallets enviados (empaquetado terminado)
+- `robot_utilization`: Porcentaje de uso de los robots
+- `avg_send_time`: Tiempo medio desde pallet listo hasta enviado
 
 ### `controllers/algorithm/algorithms.py`
 **Resumen de alto nivel:** Define la interfaz de los algoritmos y proporciona varias implementaciones estratégicas.
@@ -94,4 +137,8 @@ hackathonupc/
 **Resumen de alto nivel:** Sandbox de prueba de rendimiento.
 
 **Explicación detallada:**
-Este script es el entorno de pruebas (*sandbox*). Genera un flujo de miles de cajas y las envía al simulador iterando sobre todos los algoritmos listados en `AVAILABLE_ALGORITHMS`. Finalmente, pinta una tabla con los resultados (tiempo, pallets enviados y throughput) de todos los algoritmos, permitiendo compararlos.
+Este script es el entorno de pruebas (*sandbox*). 
+- Genera un flujo de miles de cajas y las envía al simulador iterando sobre todos los algoritmos listados en `AVAILABLE_ALGORITHMS`
+- **Pide el tiempo de empaquetado** como input al usuario (validando que sea entero >= 0)
+- Pasa el tiempo de empaquetado al simulador
+- Finalmente, pinta una tabla con los resultados (tiempo, pallets enviados y throughput) de todos los algoritmos, permitiendo compararlos
