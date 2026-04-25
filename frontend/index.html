@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silo Dashboard | HackUPC 2026</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+    <div class="glass-container">
+        <header>
+            <div class="logo">
+                <span class="neon-text">SILO</span>_SIM_v2
+            </div>
+            <div class="metrics-bar">
+                <div class="metric-card">
+                    <label>Total Time</label>
+                    <span id="metric-time">00:00:00</span>
+                </div>
+                <div class="metric-card">
+                    <label>Throughput</label>
+                    <span id="metric-throughput">0</span> <small>box/h</small>
+                </div>
+                <div class="metric-card">
+                    <label>Full Pallets</label>
+                    <span id="metric-pallets">0</span>
+                </div>
+                <div class="metric-card">
+                    <label>Occupancy</label>
+                    <span id="metric-occupancy">0%</span>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section class="controls glass">
+                <button id="btn-play" class="btn-neon">PLAY</button>
+                <button id="btn-pause" class="btn-outline">PAUSE</button>
+                <div class="speed-control">
+                    <label>Speed</label>
+                    <input type="range" id="speed-slider" min="1" max="100" value="10">
+                    <span id="speed-val">10x</span>
+                </div>
+            </section>
+
+            <section id="silo-view" class="silo-grid">
+                <!-- 4 Aisles will be injected here -->
+            </section>
+        </main>
+
+        <aside class="sidebar glass">
+            <h3>Destinations</h3>
+            <div id="destination-legend" class="legend-list">
+                <!-- Legends injected here -->
+            </div>
+            <div class="log-panel">
+                <h3>Live Feed</h3>
+                <div id="live-feed" class="feed-container"></div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
