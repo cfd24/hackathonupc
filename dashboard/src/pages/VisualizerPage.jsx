@@ -6,7 +6,7 @@ import {
   ArrowDownLeft, ArrowUpRight, Cpu, 
   Layers, Navigation, Box, Maximize2, Minimize2,
   Timer, BarChart3, Crosshair, X, ArrowUp, ArrowDown,
-  Eye, EyeOff, Loader2
+  Eye, EyeOff, Loader2, Package
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -22,7 +22,7 @@ const SIDES = 2;
 const X_POS = 60;
 const Y_LEVELS = 8;
 const Z_DEPTH = 2;
-const TICKS_PER_SEC = 10; // 100ms base tick
+const TICKS_PER_SEC = 10; 
 
 export default function VisualizerPage() {
   const [searchParams] = useSearchParams();
@@ -52,10 +52,6 @@ export default function VisualizerPage() {
   // Initialize
   const initWarehouse = useCallback(() => {
     const newGrid = {};
-    const totalSlots = AISLES * SIDES * X_POS * Y_LEVELS * Z_DEPTH;
-    const numFilled = Math.floor(totalSlots * (startCapacity / 100));
-    let filled = 0;
-
     for (let a = 1; a <= AISLES; a++) {
       for (let s = 1; s <= SIDES; s++) {
         for (let x = 1; x <= X_POS; x++) {
@@ -68,16 +64,19 @@ export default function VisualizerPage() {
       }
     }
 
+    const totalSlots = AISLES * SIDES * X_POS * Y_LEVELS * Z_DEPTH;
+    const numFilled = Math.floor(totalSlots * (startCapacity / 100));
+    let filled = 0;
     while (filled < numFilled) {
       const a = Math.floor(Math.random() * AISLES) + 1;
       const s = Math.floor(Math.random() * SIDES) + 1;
       const x = Math.floor(Math.random() * X_POS) + 1;
       const y = Math.floor(Math.random() * Y_LEVELS) + 1;
       if (!newGrid[`${a}_${s}_${x}_${y}_1`]) {
-        newGrid[`${a}_${s}_${x}_${y}_1`] = { dest: Math.floor(1000 + Math.random() * 9000).toString() };
+        newGrid[`${a}_${s}_${x}_${y}_1`] = { id: Math.floor(1000 + Math.random() * 9000).toString() };
         filled++;
       } else if (!newGrid[`${a}_${s}_${x}_${y}_2`]) {
-        newGrid[`${a}_${s}_${x}_${y}_2`] = { dest: Math.floor(1000 + Math.random() * 9000).toString() };
+        newGrid[`${a}_${s}_${x}_${y}_2`] = { id: Math.floor(1000 + Math.random() * 9000).toString() };
         filled++;
       }
     }
@@ -85,7 +84,8 @@ export default function VisualizerPage() {
     const newShuttles = [];
     for (let y = 1; y <= Y_LEVELS; y++) {
       newShuttles.push({ 
-        y, x: 0, targetX: 0, state: 'idle', task: null,
+        y, x: 0, targetX: 0, state: 'idle', subState: 'ready', task: null,
+        heldBox: null,
         handlingTicks: 0,
         stats: { inbound: 0, outbound: 0, relocs: 0 },
         queue: []
@@ -95,14 +95,12 @@ export default function VisualizerPage() {
     setGrid(newGrid);
     setShuttles(newShuttles);
     setStats({ inbound: 0, outbound: 0, relocs: 0 });
-    setLogs([{ type: 'info', msg: `Silo synchronized: Time-accurate shuttle travel physics active (t = 10 + d).` }]);
+    setLogs([{ type: 'info', msg: `Simulation environment initialized. Precise shuttle contextual telemetry enabled.` }]);
     setFocusedShuttleY(null);
     setIsPlaying(false);
   }, [startCapacity]);
 
-  useEffect(() => {
-    initWarehouse();
-  }, [initWarehouse]);
+  useEffect(() => { initWarehouse(); }, [initWarehouse]);
 
   const addLog = useCallback((msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -112,19 +110,17 @@ export default function VisualizerPage() {
     setLogs(prev => [{ type, msg, time: timestamp }, ...prev].slice(0, 50));
   }, []);
 
-  const findSlot = useCallback((currentGrid) => {
+  const findSlot = useCallback((currentGrid, aisle) => {
     for (let x = 1; x <= X_POS; x++) {
       for (let y = 1; y <= Y_LEVELS; y++) {
         for (let s = 1; s <= SIDES; s++) {
-          const key1 = `${activeAisle}_${s}_${x}_${y}_1`;
-          if (!currentGrid[key1]) return { s, x, y, z: 1 };
-          const key2 = `${activeAisle}_${s}_${x}_${y}_2`;
-          if (!currentGrid[key2]) return { s, x, y, z: 2 };
+          if (!currentGrid[`${aisle}_${s}_${x}_${y}_1`]) return { s, x, y, z: 1 };
+          if (!currentGrid[`${aisle}_${s}_${x}_${y}_2`]) return { s, x, y, z: 2 };
         }
       }
     }
     return null;
-  }, [activeAisle]);
+  }, []);
 
   const tick = useCallback(() => {
     let nextGrid = { ...grid };
@@ -133,11 +129,9 @@ export default function VisualizerPage() {
     let highlights = {};
 
     nextShuttles.forEach(s => {
-      // Logic scaling: One sim-second per TICK_PER_SEC.
-      // If speed=10, we do 1 sim-second per tick (instant handling/travel relative to real time).
-      // If speed=1, we do 0.1 sim-second per tick.
       const simSecondsPerTick = speed / TICKS_PER_SEC;
 
+      // --- STATE MACHINE ---
       if (s.state === 'moving') {
         const dist = s.targetX - s.x;
         const step = Math.sign(dist) * Math.min(Math.abs(dist), simSecondsPerTick);
@@ -146,37 +140,91 @@ export default function VisualizerPage() {
         if (Math.abs(s.x - s.targetX) < 0.01) {
           s.x = s.targetX;
           s.state = 'handling';
-          s.handlingTicks = 10 / simSecondsPerTick; // 10 seconds of handling
+          s.handlingTicks = 10 / simSecondsPerTick;
+          
+          // Determine next substate after movement
+          if (s.subState === 'heading_to_head') s.subState = 'collecting';
+          else if (s.subState === 'heading_to_pick') s.subState = 'grabbing';
+          else if (s.subState === 'traveling_to_storage') s.subState = 'storing';
+          else if (s.subState === 'returning_to_head') s.subState = 'dropping_off';
+          else if (s.subState === 'heading_to_reloc') s.subState = 'grabbing_blocker';
+          else if (s.subState === 'relocating_blocker') s.subState = 'placing_blocker';
         }
-      } else if (s.state === 'handling') {
+      } 
+      else if (s.state === 'handling') {
         s.handlingTicks -= 1;
         if (s.handlingTicks <= 0) {
           const task = s.task;
-          if (task.type === 'inbound') {
-            nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = { dest: task.dest };
+          
+          // HANDLING COMPLETE ACTIONS
+          if (s.subState === 'collecting') {
+            s.heldBox = { id: task.boxId };
+            s.state = 'moving';
+            s.targetX = task.x;
+            s.subState = 'traveling_to_storage';
+          } 
+          else if (s.subState === 'storing') {
+            nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = s.heldBox;
             nextStats.inbound++;
             s.stats.inbound++;
             highlights[`${task.s}_${task.x}_${task.y}`] = 'arrival';
-          } else if (task.type === 'outbound') {
+            s.heldBox = null;
+            s.state = 'idle';
+            s.subState = 'ready';
+            s.task = null;
+            if (s.queue.length > 0) s.queue.shift();
+          }
+          else if (s.subState === 'grabbing') {
+            s.heldBox = nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`];
             nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_${task.z}`] = null;
+            s.state = 'moving';
+            s.targetX = 0;
+            s.subState = 'returning_to_head';
+          }
+          else if (s.subState === 'dropping_off') {
             nextStats.outbound++;
             s.stats.outbound++;
             highlights[`${task.s}_${task.x}_${task.y}`] = 'retrieve';
+            s.heldBox = null;
+            s.state = 'idle';
+            s.subState = 'ready';
+            s.task = null;
+            if (s.queue.length > 0) s.queue.shift();
           }
-          s.state = 'idle';
-          s.task = null;
-          if (s.queue.length > 0) s.queue.shift();
+          else if (s.subState === 'grabbing_blocker') {
+            s.heldBox = nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_1`];
+            nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_1`] = null;
+            // Find relocation spot
+            const relocSpot = findSlot(nextGrid, activeAisle);
+            s.state = 'moving';
+            s.targetX = relocSpot.x;
+            s.subState = 'relocating_blocker';
+            s.task.relocSpot = relocSpot;
+          }
+          else if (s.subState === 'placing_blocker') {
+            const spot = s.task.relocSpot;
+            nextGrid[`${activeAisle}_${spot.s}_${spot.x}_${spot.y}_${spot.z}`] = s.heldBox;
+            nextStats.relocs++;
+            s.stats.relocs++;
+            s.heldBox = null;
+            // Now proceed to original pick
+            s.state = 'moving';
+            s.targetX = task.x;
+            s.subState = 'heading_to_pick';
+          }
         }
       }
 
+      // --- TASK ASSIGNMENT ---
       if (s.state === 'idle') {
         const isArrival = Math.random() * 100 < arrivalRate;
         if (isArrival) {
-          const slot = findSlot(nextGrid);
+          const slot = findSlot(nextGrid, activeAisle);
           if (slot) {
             s.state = 'moving';
-            s.targetX = slot.x;
-            s.task = { type: 'inbound', ...slot, dest: Math.floor(1000 + Math.random() * 9000).toString() };
+            s.targetX = 0;
+            s.subState = 'heading_to_head';
+            s.task = { type: 'inbound', ...slot, boxId: Math.floor(1000 + Math.random() * 9000).toString() };
           }
         } else {
           const occupied = [];
@@ -188,15 +236,26 @@ export default function VisualizerPage() {
           }
           if (occupied.length > 0) {
             const target = occupied[Math.floor(Math.random() * occupied.length)];
-            s.state = 'moving';
-            s.targetX = target.x;
-            s.task = { type: 'outbound', ...target };
+            const isBlocked = target.z === 2 && nextGrid[`${activeAisle}_${target.s}_${target.x}_${target.y}_1`];
+            
+            if (isBlocked) {
+              s.state = 'moving';
+              s.targetX = target.x;
+              s.subState = 'heading_to_reloc';
+              s.task = { type: 'outbound', ...target };
+            } else {
+              s.state = 'moving';
+              s.targetX = target.x;
+              s.subState = 'heading_to_pick';
+              s.task = { type: 'outbound', ...target };
+            }
           }
         }
 
         while (s.queue.length < 3) {
           s.queue.push({ 
             type: Math.random() > 0.5 ? 'STORE' : 'RETRIEVE',
+            id: Math.floor(1000 + Math.random() * 9000).toString(),
             x: Math.floor(Math.random() * 60) + 1,
             s: Math.random() > 0.5 ? 'L' : 'R'
           });
@@ -235,6 +294,32 @@ export default function VisualizerPage() {
     return { z1, z2 };
   };
 
+  const getStatusText = (s) => {
+    if (s.state === 'idle') return "IDLE — Monitoring for next request";
+    const task = s.task;
+    const boxId = s.heldBox?.id || task?.boxId || "????";
+    const side = task?.s === 1 ? 'L' : 'R';
+
+    switch (s.subState) {
+      case 'heading_to_head': return `🔵 HEADING TO HEAD — Picking up inbound box (collecting at X:0)`;
+      case 'collecting': return `🔵 COLLECTING — Inbound box #${boxId} in arms (Handling at X:0)`;
+      case 'traveling_to_storage': return `🔵 TRAVELING TO X:${task.x} ${side} — Carrying inbound box #${boxId}`;
+      case 'storing': return `🔵 STORING @ X:${task.x} ${side} Z${task.z} — Placing box #${boxId}`;
+      
+      case 'heading_to_pick': return `🟡 HEADING TO X:${task.x} ${side} — Retrieving box #${boxId} for Outbound`;
+      case 'grabbing': return `🟡 GRABBING @ X:${task.x} ${side} Z${task.z} — Box #${boxId} in arms`;
+      case 'returning_to_head': return `🟡 RETURNING TO HEAD — Delivering box #${boxId}`;
+      case 'dropping_off': return `🟡 DROPPING OFF @ HEAD — Releasing box #${boxId} to palletizer`;
+
+      case 'heading_to_reloc': return `🟠 HEADING TO X:${task.x} ${side} — Z-BLOCK relocation needed`;
+      case 'grabbing_blocker': return `🟠 GRABBING BLOCKER @ X:${task.x} ${side} Z1 — Box #${boxId} in arms`;
+      case 'relocating_blocker': return `🟠 RELOCATING TO X:${task.relocSpot?.x} ${task.relocSpot?.s === 1 ? 'L' : 'R'} — Carrying blocker #${boxId}`;
+      case 'placing_blocker': return `🟠 PLACING BLOCKER @ X:${task.relocSpot?.x} — Box #${boxId} stored`;
+      
+      default: return "Initializing...";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#020617] text-slate-300 font-sans flex flex-col h-screen overflow-hidden">
       
@@ -245,9 +330,9 @@ export default function VisualizerPage() {
           <div className="space-y-0.5">
             <h1 className="text-lg font-bold text-slate-50 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-400" />Silo Visualizer: <span className="text-indigo-400">Aisle {activeAisle}</span></h1>
             <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-              <span>{focusedShuttleY ? `Focused Level ${focusedShuttleY}` : 'Time-Accurate Physics'}</span>
+              <span>{focusedShuttleY ? `Focused Level ${focusedShuttleY}` : 'Contextual Telemetry'}</span>
               <span className="w-1 h-1 rounded-full bg-slate-700" />
-              <span>{shuttles.length} Active Controllers</span>
+              <span>{shuttles.length} Shuttles Online</span>
             </div>
           </div>
         </div>
@@ -281,7 +366,7 @@ export default function VisualizerPage() {
           </section>
 
           <section className="space-y-6">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider"><Settings2 className="w-4 h-4" /> Physics Engine</div>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider"><Settings2 className="w-4 h-4" /> Control Panel</div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setIsPlaying(!isPlaying)} className={cn("py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95", isPlaying ? "bg-slate-800" : "bg-indigo-600 text-white")}>
@@ -316,11 +401,11 @@ export default function VisualizerPage() {
                   <div className="p-3 bg-indigo-500/10 rounded-xl border border-indigo-500/20"><Maximize2 className="w-6 h-6 text-indigo-400" /></div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-50">Shuttle Focus: Level {focusedShuttleY}</h2>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Real-time Travel Animation</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Unified Side Comparison & Telemetry</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <button onClick={() => setFollowShuttle(!followShuttle)} className={cn("flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs border transition-all", followShuttle ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900 border-slate-800 text-slate-400")}>{followShuttle ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />} {followShuttle ? 'Auto-Follow' : 'Manual View'}</button>
+                  <button onClick={() => setFollowShuttle(!followShuttle)} className={cn("flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs border transition-all", followShuttle ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900 border-slate-800 text-slate-400")}>{followShuttle ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />} {followShuttle ? 'Auto-Follow' : 'Free Scroll'}</button>
                   <button onClick={() => setFocusedShuttleY(null)} className="p-3 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><X className="w-6 h-6" /></button>
                 </div>
               </div>
@@ -328,20 +413,19 @@ export default function VisualizerPage() {
               {/* DUAL SIDE VIEW ROW */}
               <div ref={scrollContainerRef} className="flex-1 overflow-x-auto scrollbar-hide py-12 px-12 scroll-smooth">
                 <div className="inline-grid gap-y-0 min-w-max" style={{ gridTemplateColumns: 'repeat(60, 150px)' }}>
-                  {/* LEFT SIDE (TOP) */}
-                  <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 uppercase tracking-widest">Left Side (01)</div>
+                  {/* LEFT SIDE */}
+                  <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 uppercase tracking-widest pl-4">Left Side (01)</div>
                   {Array.from({ length: X_POS }).map((_, xIdx) => {
                     const x = xIdx + 1; const { z1, z2 } = getCellData(x, focusedShuttleY, 1);
-                    const action = activeActions[`1_${x}_${focusedShuttleY}`];
                     return (
-                      <div key={`L${x}`} className={cn("h-40 border border-slate-800/50 flex transition-all duration-300", action === 'arrival' && "bg-blue-500/40 border-blue-400 scale-105 z-10", action === 'retrieve' && "bg-yellow-500/40 border-yellow-400 scale-105 z-10")}>
+                      <div key={`L${x}`} className="h-40 border border-slate-800/50 flex transition-all duration-300">
                         <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z1</span>
-                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.dest.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                         <div className={cn("flex-1 p-2 flex flex-col items-center justify-center gap-1", z2 ? "bg-indigo-500/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z2</span>
-                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.dest.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                       </div>
                     );
@@ -357,27 +441,26 @@ export default function VisualizerPage() {
                         focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 1 && "-translate-y-6",
                         focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 2 && "translate-y-6"
                       )}>
-                        {focusedShuttle.state === 'handling' ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : <Cpu className="w-8 h-8 text-white" />}
+                        {focusedShuttle.state === 'handling' ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : (focusedShuttle.heldBox ? <Package className="w-8 h-8 text-white" /> : <Cpu className="w-8 h-8 text-white" />)}
                         {focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 1 && <ArrowUp className="absolute -top-4 w-4 h-4 text-indigo-400 animate-bounce" />}
                         {focusedShuttle.state === 'handling' && focusedShuttle.task?.s === 2 && <ArrowDown className="absolute -bottom-4 w-4 h-4 text-indigo-400 animate-bounce" />}
-                        <div className="absolute -bottom-8 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">X:{focusedShuttle.x.toFixed(1)}</div>
+                        <div className="absolute -bottom-8 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">X:{focusedShuttle.x.toFixed(1)}</div>
                       </div>
                     </div>
                   </div>
                   {/* RIGHT SIDE */}
-                  <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 mt-4 uppercase tracking-widest">Right Side (02)</div>
+                  <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 mt-4 uppercase tracking-widest pl-4">Right Side (02)</div>
                   {Array.from({ length: X_POS }).map((_, xIdx) => {
                     const x = xIdx + 1; const { z1, z2 } = getCellData(x, focusedShuttleY, 2);
-                    const action = activeActions[`2_${x}_${focusedShuttleY}`];
                     return (
-                      <div key={`R${x}`} className={cn("h-40 border border-slate-800/50 flex transition-all duration-300", action === 'arrival' && "bg-blue-500/40 border-blue-400 scale-105 z-10", action === 'retrieve' && "bg-yellow-500/40 border-yellow-400 scale-105 z-10")}>
+                      <div key={`R${x}`} className="h-40 border border-slate-800/50 flex transition-all duration-300">
                         <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z1</span>
-                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.dest.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                         <div className={cn("flex-1 p-2 flex flex-col items-center justify-center gap-1", z2 ? "bg-indigo-500/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z2</span>
-                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.dest.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
                         </div>
                       </div>
                     );
@@ -387,43 +470,48 @@ export default function VisualizerPage() {
 
               {/* Status Panel */}
               <div className="grid grid-cols-4 gap-8 bg-slate-900/50 border border-slate-800 rounded-2xl p-6 shrink-0">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><Crosshair className="w-4 h-4" /> Telemetry</div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">X-Pos</p><p className="text-xl font-mono font-bold text-slate-100">{focusedShuttle.x.toFixed(1)}</p></div>
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase">Status</p>
-                      <p className={cn("text-[11px] font-bold uppercase mt-1", focusedShuttle.state === 'idle' ? 'text-slate-500' : 'text-indigo-400')}>{focusedShuttle.state}</p>
+                <div className="col-span-2 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><Crosshair className="w-4 h-4" /> Contextual Status Telemetry</div>
+                  <div className="bg-slate-950 p-6 rounded-xl border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase mb-2">Current Activity</p>
+                      <p className={cn(
+                        "text-lg font-bold tracking-tight",
+                        focusedShuttle.subState.includes('inbound') || focusedShuttle.subState.includes('head') ? 'text-blue-400' : 
+                        focusedShuttle.subState.includes('pick') || focusedShuttle.subState.includes('grabbing') ? 'text-yellow-400' : 'text-orange-400',
+                        focusedShuttle.state === 'idle' && 'text-slate-500'
+                      )}>
+                        {getStatusText(focusedShuttle)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-6 pl-8 border-l border-slate-800">
+                      <div className="text-center"><p className="text-[8px] text-slate-500 font-bold uppercase">X-Pos</p><p className="text-xl font-mono font-bold text-slate-100">{focusedShuttle.x.toFixed(1)}</p></div>
+                      <div className="text-center">
+                        <p className="text-[8px] text-slate-500 font-bold uppercase">Load</p>
+                        {focusedShuttle.heldBox ? <Package className="w-6 h-6 text-indigo-400 mx-auto mt-1" /> : <div className="w-6 h-6 border-2 border-dashed border-slate-800 rounded-md mx-auto mt-1" />}
+                      </div>
                     </div>
                   </div>
                 </div>
+
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><Timer className="w-4 h-4" /> Progress</div>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 h-20 flex flex-col items-center justify-center gap-2">
-                    <p className="text-[10px] font-bold text-slate-300">
-                      {focusedShuttle.state === 'moving' && `MOVING TO X:${focusedShuttle.targetX}`}
-                      {focusedShuttle.state === 'handling' && `HANDLING @ X:${focusedShuttle.x}`}
-                      {focusedShuttle.state === 'idle' && 'IDLE'}
-                    </p>
-                    {focusedShuttle.state !== 'idle' && (
-                      <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                        <div className={cn("h-full bg-indigo-500 transition-all duration-300", focusedShuttle.state === 'handling' ? 'animate-pulse' : '')} style={{ width: focusedShuttle.state === 'moving' ? `${(1 - Math.abs(focusedShuttle.targetX - focusedShuttle.x) / 60) * 100}%` : '100%' }} />
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><ListTodo className="w-4 h-4" /> Next Operations</div>
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-2">
+                    {focusedShuttle.queue.map((q, i) => (
+                      <div key={i} className="text-[10px] font-bold text-indigo-400/70 truncate uppercase flex justify-between">
+                        <span>{q.type} #{q.id}</span>
+                        <span className="text-slate-600">@ X:{q.x}{q.s}</span>
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
+
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><ListTodo className="w-4 h-4" /> Task Detail</div>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 h-20 flex items-center justify-center">
-                    <p className="text-[11px] font-bold text-indigo-400/90">{focusedShuttle.task ? `${focusedShuttle.task.type.toUpperCase()} @ X:${focusedShuttle.task.x} (SIDE ${focusedShuttle.task.s === 1 ? 'L' : 'R'})` : 'NO TASK'}</p>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><BarChart3 className="w-4 h-4" /> Controller Performance</div>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 grid grid-cols-3 gap-1 text-center">
-                    <div><p className="text-[8px] text-slate-500 font-bold uppercase">In</p><p className="text-md font-bold text-indigo-400">{focusedShuttle.stats.inbound}</p></div>
-                    <div><p className="text-[8px] text-slate-500 font-bold uppercase">Out</p><p className="text-md font-bold text-slate-100">{focusedShuttle.stats.outbound}</p></div>
-                    <div><p className="text-[8px] text-slate-500 font-bold uppercase">Rel</p><p className="text-md font-bold text-orange-400">{focusedShuttle.stats.relocs}</p></div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><BarChart3 className="w-4 h-4" /> Controller Stats</div>
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 grid grid-cols-3 gap-2 text-center h-20 items-center">
+                    <div><p className="text-[8px] text-slate-500 font-bold uppercase">In</p><p className="text-lg font-bold text-blue-400">{focusedShuttle.stats.inbound}</p></div>
+                    <div><p className="text-[8px] text-slate-500 font-bold uppercase">Out</p><p className="text-lg font-bold text-yellow-400">{focusedShuttle.stats.outbound}</p></div>
+                    <div><p className="text-[8px] text-slate-500 font-bold uppercase">Rel</p><p className="text-lg font-bold text-orange-400">{focusedShuttle.stats.relocs}</p></div>
                   </div>
                 </div>
               </div>
@@ -432,8 +520,6 @@ export default function VisualizerPage() {
 
           {/* MAIN GRID VIEW */}
           <div className="flex-1 relative border border-slate-800 rounded-3xl overflow-auto bg-slate-900/20 backdrop-blur-sm p-8 scrollbar-hide">
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-700 uppercase tracking-[0.5em]">Length (X-Position 1-60)</div>
-            <div className="absolute left-2 top-1/2 -rotate-90 origin-left -translate-y-1/2 text-[10px] font-bold text-slate-700 uppercase tracking-[0.5em]">Height (Y-Level 1-8)</div>
             <div className="inline-grid gap-y-2 select-none min-w-max" style={{ gridTemplateColumns: '80px repeat(60, 42px)' }}>
               {Array.from({ length: Y_LEVELS }).map((_, yIdx) => {
                 const y = Y_LEVELS - yIdx; const shuttle = shuttles.find(s => s.y === y);
@@ -442,18 +528,17 @@ export default function VisualizerPage() {
                     <div onClick={() => setFocusedShuttleY(y)} className="flex items-center justify-between font-bold text-xs text-slate-500 border-r border-slate-800 mr-4 px-2 hover:bg-indigo-500/10 cursor-pointer group rounded-l-lg transition-all"><span>L{y}</span><Maximize2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-indigo-400" /></div>
                     {Array.from({ length: X_POS }).map((_, xIdx) => {
                       const x = xIdx + 1; const { z1, z2 } = getCellData(x, y, activeSide);
-                      const action = activeActions[`${activeSide}_${x}_${y}`]; const isShuttleHere = shuttle && Math.floor(shuttle.x) === x;
+                      const isShuttleHere = shuttle && Math.floor(shuttle.x) === x;
                       return (
-                        <div key={`${x}_${y}`} className={cn("w-8 h-10 border border-slate-800/50 rounded-sm relative transition-all duration-300", !z1 && "bg-slate-900/10", z1 && !z2 && "bg-indigo-900/20", z1 && z2 && "bg-indigo-500/30", action === 'arrival' && "bg-blue-500/60 border-blue-400 scale-110 z-10", action === 'retrieve' && "bg-yellow-500/60 border-yellow-400 scale-110 z-10", isShuttleHere && "ring-2 ring-indigo-400/50 ring-offset-2 ring-offset-slate-950")}>
+                        <div key={`${x}_${y}`} className={cn("w-8 h-10 border border-slate-800/50 rounded-sm relative transition-all duration-300", !z1 && "bg-slate-900/10", z1 && !z2 && "bg-indigo-900/20", z1 && z2 && "bg-indigo-500/30", isShuttleHere && "ring-2 ring-indigo-400/50 ring-offset-2 ring-offset-slate-950")}>
                           {z1 && <div className={cn("absolute bottom-1 left-1 right-1 h-2 rounded-full", z2 ? "bg-indigo-400" : "bg-indigo-500/30")} />}
-                          {isShuttleHere && (<div onClick={() => setFocusedShuttleY(y)} className="absolute -top-1 -left-1 -right-1 -bottom-1 border-2 border-indigo-400 rounded-md bg-indigo-400/20 flex items-center justify-center animate-pulse z-20 cursor-pointer hover:bg-indigo-400/40"><Box className="w-3 h-3 text-white" /></div>)}
+                          {isShuttleHere && (<div onClick={() => setFocusedShuttleY(y)} className="absolute -top-1 -left-1 -right-1 -bottom-1 border-2 border-indigo-400 rounded-md bg-indigo-400/20 flex items-center justify-center animate-pulse z-20 cursor-pointer"><Package className="w-3 h-3 text-white" /></div>)}
                         </div>
                       );
                     })}
                   </React.Fragment>
                 );
               })}
-              <div /> {Array.from({ length: X_POS }).map((_, i) => (<div key={i} className="text-[8px] font-bold text-slate-700 text-center mt-2">{i+1}</div>))}
             </div>
           </div>
         </main>
