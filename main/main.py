@@ -79,7 +79,19 @@ def run_sandbox():
     except ValueError:
         print("Invalid input. Exiting.")
         return
-        
+    
+    # Get packing time per pallet
+    while True:
+        packing_time_input = input("\nIntroduce el tiempo de empaquetado por pallet en segundos: ").strip()
+        try:
+            packing_time = int(packing_time_input)
+            if packing_time >= 0:
+                break
+            else:
+                print("El tiempo debe ser un número entero mayor o igual que 0.")
+        except ValueError:
+            print("Por favor, introduce un número entero válido.")
+    
     # Configuration
     NUM_BOXES = 1000
     print(f"\nGenerating {NUM_BOXES} boxes for testing...")
@@ -92,7 +104,7 @@ def run_sandbox():
         
         # Instantiate fresh algorithm and simulator
         algo = AlgoClass()
-        sim = Simulator(algo)
+        sim = Simulator(algo, packing_time=packing_time)
         
         start_real_time = time.time()
         
@@ -115,13 +127,13 @@ def run_sandbox():
             
         hours = sim.total_time / 3600
         throughput = sim.boxes_processed / hours if hours > 0 else 0
-        pallet_pct = (sim.pallets_completed * 12 / sim.boxes_processed * 100) if sim.boxes_processed > 0 else 0
+        pallet_pct = (sim.sent_pallets * 12 / sim.boxes_processed * 100) if sim.boxes_processed > 0 else 0
         
         results.append({
             "name": algo_name,
             "sim_time": sim.total_time,
             "processed": sim.boxes_processed,
-            "pallets": sim.pallets_completed,
+            "pallets": sim.sent_pallets,
             "throughput": throughput,
             "pallet_pct": pallet_pct,
             "real_duration": real_duration
