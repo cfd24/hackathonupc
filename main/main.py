@@ -8,8 +8,8 @@ Usage:
 import random
 import sys
 
-from controllers.warehouse import Warehouse, Box, Position, X_MAX, Y_MAX, Z_MAX, AISLES, SIDES
-from controllers.algorithms import store_greedy, retrieve_greedy, collect_training_data
+from controllers.silo_simulator.warehouse import Warehouse, Box, Position, X_MAX, Y_MAX, Z_MAX, AISLES, SIDES
+from controllers.algorithm.algorithms import store_greedy, retrieve_greedy, collect_training_data
 from controllers.algorithm.neural import WarehouseNet
 
 

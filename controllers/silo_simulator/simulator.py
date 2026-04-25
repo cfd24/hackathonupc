@@ -1,6 +1,6 @@
 import time
-from controllers.warehouse import Warehouse
-from controllers.algorithms import SimpleAlgorithm
+from controllers.silo_simulator.warehouse import Warehouse
+from controllers.algorithm.algorithms import SimpleAlgorithm
 
 class Simulator:
     def __init__(self, algorithm):
