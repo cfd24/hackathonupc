@@ -37,6 +37,7 @@ export default function VisualizerPage() {
   const [focusedShuttleY, setFocusedShuttleY] = useState(null);
   const [followShuttle, setFollowShuttle] = useState(true);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
+  const [isDebugMode, setIsDebugMode] = useState(false);
 
   // Simulation State
   const [grid, setGrid] = useState({}); 
@@ -53,11 +54,16 @@ export default function VisualizerPage() {
 
   // Initialize
   const initWarehouse = useCallback(() => {
+    const curX = isDebugMode ? 5 : X_POS;
+    const curY = isDebugMode ? 3 : Y_LEVELS;
+    const curA = isDebugMode ? 1 : AISLES;
+    const curS = isDebugMode ? 1 : SIDES;
+
     const newGrid = {};
-    for (let a = 1; a <= AISLES; a++) {
-      for (let s = 1; s <= SIDES; s++) {
-        for (let x = 1; x <= X_POS; x++) {
-          for (let y = 1; y <= Y_LEVELS; y++) {
+    for (let a = 1; a <= curA; a++) {
+      for (let s = 1; s <= curS; s++) {
+        for (let x = 1; x <= curX; x++) {
+          for (let y = 1; y <= curY; y++) {
             for (let z = 1; z <= Z_DEPTH; z++) {
               newGrid[`${a}_${s}_${x}_${y}_${z}`] = null;
             }
@@ -66,16 +72,16 @@ export default function VisualizerPage() {
       }
     }
 
-    const totalSlots = AISLES * SIDES * X_POS * Y_LEVELS * Z_DEPTH;
+    const totalSlots = curA * curS * curX * curY * Z_DEPTH;
     const numFilled = Math.floor(totalSlots * (startCapacity / 100));
     const dests = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
     
     let filled = 0;
     while (filled < numFilled) {
-      const a = Math.floor(Math.random() * AISLES) + 1;
-      const s = Math.floor(Math.random() * SIDES) + 1;
-      const x = Math.floor(Math.random() * X_POS) + 1;
-      const y = Math.floor(Math.random() * Y_LEVELS) + 1;
+      const a = Math.floor(Math.random() * curA) + 1;
+      const s = Math.floor(Math.random() * curS) + 1;
+      const x = Math.floor(Math.random() * curX) + 1;
+      const y = Math.floor(Math.random() * curY) + 1;
       const dest = dests[Math.floor(Math.random() * dests.length)];
       
       if (!newGrid[`${a}_${s}_${x}_${y}_1`]) {
@@ -94,7 +100,7 @@ export default function VisualizerPage() {
     }
 
     const newShuttles = [];
-    for (let y = 1; y <= Y_LEVELS; y++) {
+    for (let y = 1; y <= curY; y++) {
       newShuttles.push({ 
         y, x: 0, targetX: 0, state: 'idle', subState: 'ready', task: null,
         heldBox: null,
@@ -107,10 +113,10 @@ export default function VisualizerPage() {
     setGrid(newGrid);
     setShuttles(newShuttles);
     setStats({ inbound: 0, outbound: 0, relocs: 0 });
-    setLogs([{ type: 'info', msg: `Simulation environment initialized. Precise shuttle contextual telemetry enabled.` }]);
+    setLogs([{ type: 'info', msg: `Simulation environment initialized. ${isDebugMode ? 'DEBUG MODE ACTIVE: 5x3 Warehouse.' : 'Precise shuttle contextual telemetry enabled.'}` }]);
     setFocusedShuttleY(null);
     setIsPlaying(false);
-  }, [startCapacity]);
+  }, [startCapacity, isDebugMode]);
 
   useEffect(() => { initWarehouse(); }, [initWarehouse]);
 
@@ -123,39 +129,56 @@ export default function VisualizerPage() {
   }, []);
 
   const findSlotSimple = useCallback((currentGrid, aisle) => {
-    for (let x = 1; x <= X_POS; x++) {
-      for (let y = 1; y <= Y_LEVELS; y++) {
-        for (let side = 1; side <= SIDES; side++) {
+    const curX = isDebugMode ? 5 : X_POS;
+    const curY = isDebugMode ? 3 : Y_LEVELS;
+    const curS = isDebugMode ? 1 : SIDES;
+
+    for (let x = 1; x <= curX; x++) {
+      for (let y = 1; y <= curY; y++) {
+        for (let side = 1; side <= curS; side++) {
           for (let z = 1; z <= Z_DEPTH; z++) {
             if (!currentGrid[`${aisle}_${side}_${x}_${y}_${z}`]) {
               if (z === 2 && !currentGrid[`${aisle}_${side}_${x}_${y}_1`]) continue;
-              return { x, y, s: side, z };
+              return { 
+                slot: { x, y, s: side, z }, 
+                rationale: `first available slot in X->Y->Side order, respecting Z=1 priority (Simple Baseline)`
+              };
             }
           }
         }
       }
     }
     return null;
-  }, []);
+  }, [isDebugMode]);
 
   const findSlotColumnGrouping = useCallback((currentGrid, aisle, dest, state) => {
+    const curX = isDebugMode ? 5 : X_POS;
+    const curY = isDebugMode ? 3 : Y_LEVELS;
+    const curS = isDebugMode ? 1 : SIDES;
+
     const destCols = state.dest_columns?.[dest] || [];
     
     // 1. Try existing columns
     for (const colKey of destCols) {
       const [a, side, x] = colKey.split('_').map(Number);
       if (a !== aisle) continue;
-      for (let y = 1; y <= Y_LEVELS; y++) {
-        if (!currentGrid[`${a}_${side}_${x}_${y}_1`]) return { x, y, s: side, z: 1 };
-        if (!currentGrid[`${a}_${side}_${x}_${y}_2`]) return { x, y, s: side, z: 2 };
+      for (let y = 1; y <= curY; y++) {
+        if (!currentGrid[`${a}_${side}_${x}_${y}_1`]) return { 
+          slot: { x, y, s: side, z: 1 },
+          rationale: `found assigned column ${colKey} for destination ${dest} with free space at Y:${y} (Column Grouping)`
+        };
+        if (!currentGrid[`${a}_${side}_${x}_${y}_2`]) return { 
+          slot: { x, y, s: side, z: 2 },
+          rationale: `found assigned column ${colKey} for destination ${dest} with free Z:2 space at Y:${y} (Column Grouping)`
+        };
       }
     }
 
     // 2. Find new empty column
-    for (let x = 1; x <= X_POS; x++) {
-      for (let side = 1; side <= SIDES; side++) {
+    for (let x = 1; x <= curX; x++) {
+      for (let side = 1; side <= curS; side++) {
         let isColEmpty = true;
-        for (let y = 1; y <= Y_LEVELS; y++) {
+        for (let y = 1; y <= curY; y++) {
           if (currentGrid[`${aisle}_${side}_${x}_${y}_1`] || currentGrid[`${aisle}_${side}_${x}_${y}_2`]) {
             isColEmpty = false; break;
           }
@@ -177,32 +200,47 @@ export default function VisualizerPage() {
               [dest]: [...(prev.dest_columns?.[dest] || []), colKey]
             }
           }));
-          return { x, y: 1, s: side, z: 1 };
+          return { 
+            slot: { x, y: 1, s: side, z: 1 },
+            rationale: `assigned new empty column ${colKey} to destination ${dest} (Column Grouping)`
+          };
         }
       }
     }
 
     // 3. Fallback
-    return findSlotSimple(currentGrid, aisle);
-  }, [findSlotSimple]);
+    const fallback = findSlotSimple(currentGrid, aisle);
+    if (fallback) fallback.rationale = `no empty/assigned columns available, falling back to simple scan: ${fallback.rationale}`;
+    return fallback;
+  }, [findSlotSimple, isDebugMode]);
 
   const findSlotZSafeSimple = useCallback((currentGrid, aisle, dest) => {
-    for (let x = 1; x <= X_POS; x++) {
-      for (let y = 1; y <= Y_LEVELS; y++) {
-        for (let side = 1; side <= SIDES; side++) {
+    const curX = isDebugMode ? 5 : X_POS;
+    const curY = isDebugMode ? 3 : Y_LEVELS;
+    const curS = isDebugMode ? 1 : SIDES;
+
+    for (let x = 1; x <= curX; x++) {
+      for (let y = 1; y <= curY; y++) {
+        for (let side = 1; side <= curS; side++) {
           // Z=1 first
-          if (!currentGrid[`${aisle}_${side}_${x}_${y}_1`]) return { x, y, s: side, z: 1 };
+          if (!currentGrid[`${aisle}_${side}_${x}_${y}_1`]) return { 
+            slot: { x, y, s: side, z: 1 },
+            rationale: `found free Z=1 slot at X:${x} Y:${y} (Z-Safe Simple)`
+          };
           
           // Z=2 ONLY if Z=1 matches dest
           if (!currentGrid[`${aisle}_${side}_${x}_${y}_2`]) {
             const z1Box = currentGrid[`${aisle}_${side}_${x}_${y}_1`];
-            if (z1Box && z1Box.destination === dest) return { x, y, s: side, z: 2 };
+            if (z1Box && z1Box.destination === dest) return { 
+              slot: { x, y, s: side, z: 2 },
+              rationale: `found free Z=2 slot at X:${x} Y:${y} where Z=1 is same destination ${dest} (Z-Safe Simple)`
+            };
           }
         }
       }
     }
     return null;
-  }, []);
+  }, [isDebugMode]);
 
   const tick = useCallback(() => {
     let nextGrid = { ...grid };
@@ -211,7 +249,7 @@ export default function VisualizerPage() {
     let highlights = {};
 
     nextShuttles.forEach(s => {
-      const simSecondsPerTick = speed / TICKS_PER_SEC;
+      const simSecondsPerTick = isDebugMode ? 1 : (speed / TICKS_PER_SEC);
 
       // --- STATE MACHINE ---
       if (s.state === 'moving') {
@@ -277,7 +315,8 @@ export default function VisualizerPage() {
             s.heldBox = nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_1`];
             nextGrid[`${activeAisle}_${task.s}_${task.x}_${task.y}_1`] = null;
             // Find relocation spot
-            const relocSpot = findSlotSimple(nextGrid, activeAisle);
+            const relocResult = findSlotSimple(nextGrid, activeAisle);
+            const relocSpot = relocResult.slot;
             s.state = 'moving';
             s.targetX = relocSpot.x;
             s.subState = 'relocating_blocker';
@@ -305,21 +344,24 @@ export default function VisualizerPage() {
           const dests = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
           const dest = `DEST_${dests[Math.floor(Math.random() * dests.length)]}`;
           
-          let slot = null;
-          if (algoId === 'simple') slot = findSlotSimple(nextGrid, activeAisle);
-          else if (algoId === 'column') slot = findSlotColumnGrouping(nextGrid, activeAisle, dest, algoState);
-          else if (algoId === 'z-safe') slot = findSlotZSafeSimple(nextGrid, activeAisle, dest);
-          else slot = findSlotSimple(nextGrid, activeAisle); // Fallback
+          const boxId = Math.floor(1000 + Math.random() * 9000).toString();
+          let result = null;
+          if (algoId === 'simple') result = findSlotSimple(nextGrid, activeAisle);
+          else if (algoId === 'column') result = findSlotColumnGrouping(nextGrid, activeAisle, dest, algoState);
+          else if (algoId === 'z-safe') result = findSlotZSafeSimple(nextGrid, activeAisle, dest);
+          else result = findSlotSimple(nextGrid, activeAisle); // Fallback
 
-          if (slot && slot.y === s.y) {
+          if (result && result.slot && result.slot.y === s.y) {
+            const slot = result.slot;
             s.state = 'moving';
             s.targetX = 0;
             s.subState = 'heading_to_head';
             s.task = { 
               type: 'inbound', ...slot, 
-              boxId: Math.floor(1000 + Math.random() * 9000).toString(),
+              boxId,
               destination: dest
             };
+            if (isDebugMode) addLog(`[ALGO] Inbound box #${boxId} → chose X:${slot.x} Y:${slot.y} Z:${slot.z} because: ${result.rationale}`, 'success');
           }
         } 
         // Retrievals (If not doing arrival)
@@ -351,6 +393,11 @@ export default function VisualizerPage() {
 
           if (retrievalTarget) {
             const isBlocked = retrievalTarget.z === 2 && nextGrid[`${activeAisle}_${retrievalTarget.s}_${retrievalTarget.x}_${retrievalTarget.y}_1`];
+            if (isBlocked) {
+              const blocker = nextGrid[`${activeAisle}_${retrievalTarget.s}_${retrievalTarget.x}_${retrievalTarget.y}_1`];
+              const relocResult = findSlotSimple(nextGrid, activeAisle);
+              if (isDebugMode) addLog(`[ALGO] Retrieval needed at X:${retrievalTarget.x} Y:${retrievalTarget.y} Z:2 → Z-Block! Z:1 occupied by #${blocker.id} → relocating to X:${relocResult.slot.x} Y:${relocResult.slot.y} Z:${relocResult.slot.z} because: ${relocResult.rationale}`, 'warning');
+            }
             s.state = 'moving';
             s.targetX = retrievalTarget.x;
             s.subState = isBlocked ? 'heading_to_reloc' : 'heading_to_pick';
@@ -501,6 +548,19 @@ export default function VisualizerPage() {
                 <option value="z-weighted">Z-Weighted Pro (demo)</option>
                 <option value="greedy">Distance Greedy (demo)</option>
               </select>
+            </div>
+
+            <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg py-2 px-3">
+              <div className="flex items-center gap-2">
+                <Cpu className={cn("w-4 h-4", isDebugMode ? "text-amber-500" : "text-slate-500")} />
+                <span className="text-[10px] font-bold text-slate-300 uppercase">Debug Mode</span>
+              </div>
+              <button 
+                onClick={() => setIsDebugMode(!isDebugMode)}
+                className={cn("w-10 h-5 rounded-full relative transition-all duration-300", isDebugMode ? "bg-amber-600" : "bg-slate-700")}
+              >
+                <div className={cn("absolute top-1 w-3 h-3 bg-white rounded-full transition-all duration-300", isDebugMode ? "left-6" : "left-1")} />
+              </button>
             </div>
             <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setIsPlaying(!isPlaying)} className={cn("py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95", isPlaying ? "bg-slate-800" : "bg-indigo-600 text-white")}>
