@@ -17,6 +17,7 @@ from controllers.algorithm.algorithms import (
     VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, 
     ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedProAlgorithm, 
     ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, 
+    ZSafeRWeightedYSafeVarianceAlgorithm,
     DestinationZoneAlgorithm, MaturityFirstAlgorithm
 )
 
@@ -212,9 +213,17 @@ class RealisticBenchmark:
 def run_all_realistic():
     algos = [
         ("Simple Baseline", SimpleAlgorithm),
+        ("Distance Greedy", DistanceGreedyAlgorithm),
         ("Column Grouping", ColumnGroupingAlgorithm),
+        ("Velocity Column", VelocityColumnAlgorithm),
+        ("Velocity Simple", VelocitySimpleAlgorithm),
+        ("Z-Safe Simple", ZSafeSimpleAlgorithm),
         ("Z-Safe Pro", ZSafeProAlgorithm),
-        ("Z-Safe Weighted Pro", ZSafeWeightedProAlgorithm),
+        ("Z-Safe Weighted", ZSafeWeightedAlgorithm),
+        ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
+        ("Z-Safe-R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
+        ("Z-Safe-R Weighted Y-Safe Variance", ZSafeRWeightedYSafeVarianceAlgorithm),
+        ("Z-Weighted Pro", ZSafeWeightedProAlgorithm),
         ("Destination Zones", DestinationZoneAlgorithm),
         ("Maturity First", MaturityFirstAlgorithm),
     ]
@@ -223,27 +232,30 @@ def run_all_realistic():
     
     for name, cls in algos:
         print(f"Benchmarking {name}...")
-        bench = RealisticBenchmark(cls)
-        
-        # Mode 1: Steady State (6h, 1h warmup)
-        print(f"  -> Running Steady-State...")
-        r1 = bench.run_simulation("steady", 6, 1)
-        
-        # Mode 2: Spike (4h total)
-        print(f"  -> Running Spike Test...")
-        r2 = bench.run_simulation("spike", 4, 0)
-        
-        # Mode 3: Long Run (24h)
-        print(f"  -> Running Long-Run...")
-        r3 = bench.run_simulation("long", 24, 0)
-        
-        all_results.append({
-            "algorithm": name,
-            "steady": r1,
-            "spike": r2,
-            "long": r3
-        })
-        
+        try:
+            bench = RealisticBenchmark(cls)
+            
+            # Mode 1: Steady State (6h, 1h warmup)
+            print(f"  -> Running Steady-State...")
+            r1 = bench.run_simulation("steady", 6, 1)
+            
+            # Mode 2: Spike (4h total)
+            print(f"  -> Running Spike Test...")
+            r2 = bench.run_simulation("spike", 4, 0)
+            
+            # Mode 3: Long Run (24h)
+            print(f"  -> Running Long-Run...")
+            r3 = bench.run_simulation("long", 24, 0)
+            
+            all_results.append({
+                "algorithm": name,
+                "steady": r1,
+                "spike": r2,
+                "long": r3
+            })
+        except Exception as e:
+            print(f"  -> FAILED: {str(e)}")
+            
     with open('realistic_benchmark_results.json', 'w') as f:
         json.dump(all_results, f, indent=2)
     print("\nRealistic benchmark complete. Results saved to realistic_benchmark_results.json")
