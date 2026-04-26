@@ -694,7 +694,7 @@ class ZSafeRWeightedYSafeAlgorithm(ZSafeWeightedYSafeAlgorithm):
 
 class ZSafeRWeightedYSafeVarianceAlgorithm(ZSafeRWeightedYSafeAlgorithm):
     """
-    Reordered weighted Y-safe algorithm with wagon-alignment retrieval.
+    Original reordered weighted Y-safe algorithm with snapshot variance.
 
     Storage prioritizes Y-level carriers closer to X=1. Retrieval only exports
     a pallet when the best 12 same-destination boxes are sufficiently aligned
@@ -705,7 +705,7 @@ class ZSafeRWeightedYSafeVarianceAlgorithm(ZSafeRWeightedYSafeAlgorithm):
         max_weighted_backoff=1,
         max_pairs_per_aisle_height=1,
         z2_start_x_ratio=0.6,
-        max_avg_squared_wagon_distance=81,
+        max_avg_squared_wagon_distance=144,
     ):
         super().__init__(
             max_weighted_backoff=max_weighted_backoff,
@@ -784,6 +784,195 @@ class ZSafeRWeightedYSafeVarianceAlgorithm(ZSafeRWeightedYSafeAlgorithm):
 
         best_items.sort(key=lambda item: (item[0][4], item[0][2]))
         return [code for _, code in best_items]
+
+class Variance(ZSafeRWeightedYSafeAlgorithm):
+    """
+    Operation-aware variance algorithm.
+
+    Storage uses the fast reordered weighted Y-safe path. Retrieval exports
+    only pallets whose selected boxes stay tightly aligned while simulating
+    the shuttle movements needed to extract the full pallet.
+    """
+    def __init__(
+        self,
+        max_weighted_backoff=1,
+        max_pairs_per_aisle_height=1,
+        z2_start_x_ratio=0.6,
+        max_avg_squared_wagon_distance=144,
+        retrieval_time_weight=0.08,
+        retrieval_frontness_weight=0.15,
+        retrieval_unit_limit=48,
+    ):
+        super().__init__(
+            max_weighted_backoff=max_weighted_backoff,
+            max_pairs_per_aisle_height=max_pairs_per_aisle_height,
+            z2_start_x_ratio=z2_start_x_ratio,
+        )
+        self.max_avg_squared_wagon_distance = max_avg_squared_wagon_distance
+        self.retrieval_time_weight = retrieval_time_weight
+        self.retrieval_frontness_weight = retrieval_frontness_weight
+        self.retrieval_unit_limit = retrieval_unit_limit
+
+    def _y_levels_by_carrier_priority(self, warehouse):
+        return sorted(
+            range(1, warehouse.num_y + 1),
+            key=lambda y: (abs(warehouse.shuttles_x[y] - 1), y)
+        )
+
+    def _find_z1_slot_in_x(self, dest, warehouse, x):
+        for side in range(1, warehouse.num_sides + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for y in self._y_levels_by_carrier_priority(warehouse):
+                    if not warehouse.is_slot_empty(aisle, side, x, y, 1):
+                        continue
+
+                    pair_count = self._destination_aisle_height_count(dest, warehouse, aisle, y)
+                    if pair_count < self.max_pairs_per_aisle_height:
+                        return (aisle, side, x, y, 1)
+        return None
+
+    def _find_matching_z2_slot_in_x(self, dest, warehouse, x):
+        for side in range(1, warehouse.num_sides + 1):
+            for aisle in range(1, warehouse.num_aisles + 1):
+                for y in self._y_levels_by_carrier_priority(warehouse):
+                    if not warehouse.is_slot_empty(aisle, side, x, y, 2):
+                        continue
+
+                    z1_box = warehouse.grid.get((aisle, side, x, y, 1))
+                    if z1_box and z1_box.get('destination') == dest:
+                        return (aisle, side, x, y, 2)
+        return None
+
+    def _avg_squared_wagon_distance(self, items, warehouse):
+        distances = self._operation_squared_wagon_distances(items, warehouse)
+        return sum(distances) / len(distances)
+
+    def _max_squared_wagon_distance(self, items, warehouse):
+        return max(self._operation_squared_wagon_distances(items, warehouse))
+
+    def _operation_squared_wagon_distances(self, items, warehouse):
+        shuttle_x = dict(warehouse.shuttles_x)
+        distances = []
+        for coords, _ in self._zsafe_retrieval_order(items):
+            x = coords[2]
+            y = coords[3]
+            distances.append((x - shuttle_x[y]) ** 2)
+            shuttle_x[y] = 0
+        return distances
+
+    def _estimated_retrieval_time(self, items, warehouse):
+        shuttle_x = dict(warehouse.shuttles_x)
+        total = 0
+        for coords, _ in self._zsafe_retrieval_order(items):
+            x = coords[2]
+            y = coords[3]
+            total += abs(x - shuttle_x[y]) + x + 20
+            shuttle_x[y] = 0
+        return total
+
+    def _zsafe_retrieval_order(self, items):
+        return sorted(items, key=lambda item: (item[0][0], item[0][1], item[0][2], item[0][3], item[0][4]))
+
+    def _frontness_score(self, items):
+        return sum(coords[2] for coords, _ in items) / len(items)
+
+    def _slot_units_for_destination(self, items, warehouse):
+        slot_groups = {}
+        for coords, code in items:
+            slot_key = coords[:4]
+            slot_groups.setdefault(slot_key, []).append((coords, code))
+
+        units = []
+        for slot_key, slot_items in slot_groups.items():
+            by_z = {coords[4]: (coords, code) for coords, code in slot_items}
+            if 1 in by_z:
+                units.append([by_z[1]])
+            if 1 in by_z and 2 in by_z:
+                units.append([by_z[1], by_z[2]])
+            elif 2 in by_z:
+                z1_box = warehouse.grid.get((slot_key[0], slot_key[1], slot_key[2], slot_key[3], 1))
+                if z1_box is None:
+                    units.append([by_z[2]])
+
+        return units
+
+    def _unit_score(self, unit, warehouse):
+        avg_variance = self._avg_squared_wagon_distance(unit, warehouse)
+        retrieval_time = self._estimated_retrieval_time(unit, warehouse)
+        frontness = self._frontness_score(unit)
+        pair_bonus = -0.2 if len(unit) == 2 else 0
+        return (
+            avg_variance
+            + (retrieval_time * self.retrieval_time_weight)
+            + (frontness * self.retrieval_frontness_weight)
+            + pair_bonus
+        )
+
+    def _candidate_pallet_for_destination(self, items, warehouse):
+        units = self._slot_units_for_destination(items, warehouse)
+        units = sorted(
+            units,
+            key=lambda unit: (self._unit_score(unit, warehouse), len(unit))
+        )[:self.retrieval_unit_limit]
+
+        selected = []
+        selected_codes = set()
+        for unit in units:
+            if len(selected) + len(unit) > 12:
+                continue
+            if any(code in selected_codes for _, code in unit):
+                continue
+            selected.extend(unit)
+            selected_codes.update(code for _, code in unit)
+            if len(selected) == 12:
+                return selected
+
+        return None
+
+    def _pallet_score(self, items, warehouse):
+        avg_variance = self._avg_squared_wagon_distance(items, warehouse)
+        retrieval_time = self._estimated_retrieval_time(items, warehouse)
+        frontness = self._frontness_score(items)
+        return (
+            avg_variance,
+            (retrieval_time * self.retrieval_time_weight) + (frontness * self.retrieval_frontness_weight),
+            frontness,
+        )
+
+    def get_retrieval_plan(self, warehouse):
+        dest_groups = {}
+        for coords, box_data in warehouse.grid.items():
+            dest = box_data.get('destination')
+            if dest not in dest_groups:
+                dest_groups[dest] = []
+            dest_groups[dest].append((coords, box_data['code']))
+
+        best_items = None
+        best_score = None
+        for dest, items in dest_groups.items():
+            if len(items) < 12:
+                continue
+
+            candidates = self._candidate_pallet_for_destination(items, warehouse)
+            if candidates is None:
+                continue
+
+            score = self._avg_squared_wagon_distance(candidates, warehouse)
+            max_score = self._max_squared_wagon_distance(candidates, warehouse)
+            if score >= self.max_avg_squared_wagon_distance:
+                continue
+            if max_score >= self.max_avg_squared_wagon_distance:
+                continue
+
+            pallet_score = self._pallet_score(candidates, warehouse)
+            if best_score is None or pallet_score < best_score:
+                best_score = pallet_score
+                best_items = candidates
+
+        if best_items is None:
+            return None
+
+        return [code for _, code in self._zsafe_retrieval_order(best_items)]
 
 class ZSafeWeightedProAlgorithm(ZSafeWeightedAlgorithm):
     """
