@@ -20,6 +20,7 @@ class Warehouse:
         # Global clock (the time when the last operation finished)
         self.global_time = 0.0
         self.relocations = 0
+        self.events = None
 
     def get_shuttle_move_time(self, y, target_x):
         """Calculate time to move shuttle at level Y to target X."""
@@ -108,6 +109,15 @@ class Warehouse:
             total_time_taken += self.move_shuttle(y, new_pos[2])
             self.grid[new_pos] = z1_box
             self.box_positions[z1_box['code']] = new_pos
+            
+            if self.events is not None:
+                self.events.append({
+                    "type": "RELOCATE",
+                    "time": self.shuttles_time[y],
+                    "box": z1_box['code'],
+                    "from": {"aisle": aisle, "side": side, "x": x, "y": y, "z": 1},
+                    "to": {"aisle": new_pos[0], "side": new_pos[1], "x": new_pos[2], "y": new_pos[3], "z": new_pos[4]}
+                })
             
             # 4. Return to original X to pick up the Z=2 box
             total_time_taken += self.move_shuttle(y, x)

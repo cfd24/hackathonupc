@@ -99,6 +99,10 @@ class Simulator:
         self.pallets_packing_count = 0
         self.pallet_formation_times = []  # Time from first box extracted to pallet ready
         self.pallet_send_times = []  # Time from ready to sent
+        
+        # Event logging for frontend replay
+        self.events = []
+        self.warehouse.events = self.events
 
     def parse_box_code(self, code):
         if len(code) != 20:
@@ -124,6 +128,19 @@ class Simulator:
                     z = int(pos[13:15])
                     box_data = self.parse_box_code(code)
                     self.warehouse.store_box(aisle, side, x, y, z, box_data, check_z=False)
+                    
+                    # Log initial store events at time 0
+                    self.events.append({
+                        "type": "STORE",
+                        "time": 0.0,
+                        "box": code,
+                        "destination": box_data["destination"],
+                        "aisle": aisle,
+                        "side": side,
+                        "x": x,
+                        "y": y,
+                        "z": z
+                    })
             print(f"Initialized warehouse with {len(self.warehouse.grid)} boxes from {csv_file}")
         except FileNotFoundError:
             print(f"Warning: {csv_file} not found. Starting with empty warehouse.")
@@ -195,6 +212,14 @@ class Simulator:
                 self.pallets_packing_count -= 1
                 self.packing_pallets.pop((robot.robot_id, slot_id), None)
                 
+                # Log pallet complete event
+                self.events.append({
+                    "type": "PALLET_COMPLETE",
+                    "time": current_time,
+                    "destination": destination,
+                    "boxes": 12
+                })
+                
                 # Record time from ready to sent
                 if self.ready_pallets[destination]["ready_time"]:
                     time_to_send = current_time - self.ready_pallets[destination]["ready_time"]
@@ -246,6 +271,20 @@ class Simulator:
             if location:
                 time_taken = self.warehouse.store_box(*location, box_data)
                 self.boxes_processed += 1
+                
+                # Log store event
+                self.events.append({
+                    "type": "STORE",
+                    "time": self.warehouse.shuttles_time[location[3]],
+                    "box": code,
+                    "destination": box_data["destination"],
+                    "aisle": location[0],
+                    "side": location[1],
+                    "x": location[2],
+                    "y": location[3],
+                    "z": location[4]
+                })
+                
                 if real_time:
                     self.save_state(f"Stored {code}")
                     if delay > 0:
@@ -267,6 +306,19 @@ class Simulator:
                                 # Box was retrieved, get its destination from the code
                                 dest = box_code[7:15]
                                 self.extracted_boxes[dest].append(box_code)
+                                
+                                # Log retrieve event
+                                self.events.append({
+                                    "type": "RETRIEVE",
+                                    "time": self.warehouse.shuttles_time[coords[3]],
+                                    "box": box_code,
+                                    "destination": dest,
+                                    "aisle": coords[0],
+                                    "side": coords[1],
+                                    "x": coords[2],
+                                    "y": coords[3],
+                                    "z": coords[4]
+                                })
                     
                     self.active_pallets_count -= 1
                     
@@ -305,6 +357,12 @@ class Simulator:
         self.pallets_completed = self.sent_pallets
         
         self.save_state("Simulation Finished")
+        
+        # Save all events to JSON for frontend replay
+        with open('simulation_events.json', 'w') as f:
+            json.dump(self.events, f)
+        print(f"Saved {len(self.events)} events to simulation_events.json")
+        
         self.print_metrics()
 
     def print_metrics(self):

@@ -54,9 +54,17 @@ export default function VisualizerPage() {
   const [activeActions, setActiveActions] = useState({}); 
   const [algoState, setAlgoState] = useState({}); // For Column Grouping etc.
 
+  // Replay State
+  const [mode, setMode] = useState('demo'); // 'demo' or 'replay'
+  const [replayEvents, setReplayEvents] = useState([]);
+  const [replayTime, setReplayTime] = useState(0);
+  const [replayPointer, setReplayPointer] = useState(0);
+  const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+
   const simTimer = useRef(null);
   const lastLogRef = useRef(null);
   const scrollContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Initialize
   const initWarehouse = useCallback(() => {
@@ -261,11 +269,120 @@ export default function VisualizerPage() {
     return null;
   }, [isDebugMode]);
 
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const events = JSON.parse(evt.target.result);
+        // Filter out any invalid events and sort by time
+        const validEvents = events
+          .filter(ev => ev.time !== undefined && ev.type)
+          .sort((a, b) => a.time - b.time);
+        
+        setReplayEvents(validEvents);
+        setMode('replay');
+        setReplayTime(0);
+        setReplayPointer(0);
+        setIsPlaying(false);
+        setLogs([{ type: 'success', msg: `Python Replay Loaded: ${validEvents.length} events found. Replaying simulation trace.` }]);
+        
+        // Initialize grid from time 0 events (STORE events with time 0)
+        const initialGrid = {};
+        validEvents.filter(ev => ev.type === 'STORE' && ev.time === 0).forEach(ev => {
+          initialGrid[`${ev.aisle}_${ev.side}_${ev.x}_${ev.y}_${ev.z}`] = { 
+            id: ev.box.slice(-4),
+            destination: ev.destination 
+          };
+        });
+        setGrid(initialGrid);
+        setStats({ inbound: 0, outbound: 0, relocs: 0 });
+        setPalletSlots(Array.from({ length: 8 }).map((_, i) => ({ 
+          id: i, destination: null, count: 0, status: 'idle', lastShipped: 0 
+        })));
+
+      } catch (err) {
+        console.error("Error parsing replay file:", err);
+        addLog("Failed to load replay file. Invalid JSON format.", "warning");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const tick = useCallback(() => {
     let nextGrid = { ...grid };
     let nextShuttles = [...shuttles];
     let nextStats = { ...stats };
     let highlights = {};
+
+    if (mode === 'replay') {
+      const simSecondsPerTick = speed / TICKS_PER_SEC;
+      const newTime = replayTime + simSecondsPerTick;
+      setReplayTime(newTime);
+
+      let currentPointer = replayPointer;
+      while (currentPointer < replayEvents.length && replayEvents[currentPointer].time <= newTime) {
+        const ev = replayEvents[currentPointer];
+        
+        if (ev.type === 'STORE') {
+          nextGrid[`${ev.aisle}_${ev.side}_${ev.x}_${ev.y}_${ev.z}`] = { 
+            id: ev.box.slice(-4), 
+            destination: ev.destination 
+          };
+          nextStats.inbound++;
+          if (ev.aisle === activeAisle) highlights[`${ev.side}_${ev.x}_${ev.y}`] = 'arrival';
+          addLog(`[PYTHON] Stored box ${ev.box.slice(-4)} at X:${ev.x} Y:${ev.y} Z:${ev.z}`, 'success');
+        } 
+        else if (ev.type === 'RETRIEVE') {
+          nextGrid[`${ev.aisle}_${ev.side}_${ev.x}_${ev.y}_${ev.z}`] = null;
+          nextStats.outbound++;
+          if (ev.aisle === activeAisle) highlights[`${ev.side}_${ev.x}_${ev.y}`] = 'retrieve';
+          addLog(`[PYTHON] Retrieved box ${ev.box.slice(-4)} from X:${ev.x} Y:${ev.y} Z:${ev.z}`, 'warning');
+        }
+        else if (ev.type === 'RELOCATE') {
+          const box = nextGrid[`${ev.from.aisle}_${ev.from.side}_${ev.from.x}_${ev.from.y}_${ev.from.z}`];
+          nextGrid[`${ev.from.aisle}_${ev.from.side}_${ev.from.x}_${ev.from.y}_${ev.from.z}`] = null;
+          nextGrid[`${ev.to.aisle}_${ev.to.side}_${ev.to.x}_${ev.to.y}_${ev.to.z}`] = box;
+          nextStats.relocs++;
+          if (ev.from.aisle === activeAisle) highlights[`${ev.from.side}_${ev.from.x}_${ev.from.y}`] = 'relocating';
+          if (ev.to.aisle === activeAisle) highlights[`${ev.to.side}_${ev.to.x}_${ev.to.y}`] = 'arrival';
+          addLog(`[PYTHON] Relocated box ${ev.box.slice(-4)} to X:${ev.to.x} Y:${ev.to.y}`, 'warning');
+        }
+        else if (ev.type === 'PALLET_COMPLETE') {
+           setPalletSlots(prev => {
+             let slotIdx = prev.findIndex(p => p.destination === ev.destination);
+             if (slotIdx === -1) slotIdx = prev.findIndex(p => p.destination === null);
+             if (slotIdx === -1) return prev;
+             
+             const next = [...prev];
+             next[slotIdx] = { 
+               ...next[slotIdx], 
+               destination: ev.destination, 
+               count: 12, 
+               status: 'shipped', 
+               lastShipped: Date.now() 
+             };
+             return next;
+           });
+           addLog(`[PYTHON] Pallet Complete: ${ev.destination}`, 'success');
+        }
+
+        currentPointer++;
+      }
+      setReplayPointer(currentPointer);
+      setGrid(nextGrid);
+      setStats(nextStats);
+      setActiveActions(highlights);
+      setTimeout(() => setActiveActions({}), 400);
+      
+      if (currentPointer >= replayEvents.length && replayEvents.length > 0) {
+        setIsPlaying(false);
+        addLog("Replay Finished.", "success");
+      }
+      return;
+    }
 
     nextShuttles.forEach(s => {
       const simSecondsPerTick = isDebugMode ? 1 : (speed / TICKS_PER_SEC);
@@ -469,7 +586,7 @@ export default function VisualizerPage() {
     setActiveActions(highlights);
     setTimeout(() => setActiveActions({}), 400);
 
-  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlotSimple, findSlotColumnGrouping, findSlotZSafeSimple, algoId, algoState, isDebugMode]);
+  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlotSimple, findSlotColumnGrouping, findSlotZSafeSimple, algoId, algoState, isDebugMode, mode, replayTime, replayPointer, replayEvents, addLog]);
 
   useEffect(() => {
     if (isPlaying) { simTimer.current = setInterval(tick, 1000 / TICKS_PER_SEC); }
@@ -521,7 +638,14 @@ export default function VisualizerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-300 font-sans flex flex-col h-screen overflow-hidden">
+    <div className="min-h-screen bg-[#020617] text-slate-300 font-sans flex flex-col h-screen overflow-hidden relative">
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        className="hidden" 
+        accept=".json"
+      />
       
       {/* Header */}
       <header className="px-8 py-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-950/80 backdrop-blur-md z-30">
@@ -533,6 +657,14 @@ export default function VisualizerPage() {
               <span>{focusedShuttleY ? `Focused Level ${focusedShuttleY}` : 'Contextual Telemetry'}</span>
               <span className="w-1 h-1 rounded-full bg-slate-700" />
               <span>{shuttles.length} Shuttles Online</span>
+              <span className="w-1 h-1 rounded-full bg-slate-700" />
+              <div className={cn(
+                "px-2 py-0.5 rounded flex items-center gap-1.5",
+                mode === 'replay' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+              )}>
+                <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", mode === 'replay' ? "bg-emerald-400" : "bg-amber-400")} />
+                {mode === 'replay' ? '🐍 Python Replay' : '🎮 JS Demo'}
+              </div>
             </div>
           </div>
         </div>
@@ -578,15 +710,36 @@ export default function VisualizerPage() {
               <select 
                 value={algoId} 
                 onChange={(e) => setAlgoId(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 transition-all"
+                disabled={mode === 'replay'}
+                className={cn(
+                  "w-full bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-xs font-bold outline-none focus:border-indigo-500 transition-all",
+                  mode === 'replay' ? "text-slate-500 opacity-50 cursor-not-allowed" : "text-slate-200"
+                )}
               >
-                <option value="simple">Simple Baseline ✓</option>
-                <option value="column">Column Grouping ✓</option>
-                <option value="z-safe">Z-Safe Simple ✓</option>
-                <option value="z-weighted">Z-Weighted Pro (demo)</option>
-                <option value="greedy">Distance Greedy (demo)</option>
+                {mode === 'replay' ? <option value="replay">🐍 Replay Source (Python) ✓</option> : (
+                  <>
+                    <option value="simple">Simple Baseline ✓</option>
+                    <option value="column">Column Grouping ✓</option>
+                    <option value="z-safe">Z-Safe Simple ✓</option>
+                    <option value="z-weighted">Z-Weighted Pro (demo)</option>
+                    <option value="greedy">Distance Greedy (demo)</option>
+                  </>
+                )}
               </select>
             </div>
+
+            <button 
+              onClick={() => mode === 'replay' ? setMode('demo') : fileInputRef.current.click()}
+              className={cn(
+                "w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 border",
+                mode === 'replay' 
+                  ? "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200" 
+                  : "bg-emerald-600/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-600/20"
+              )}
+            >
+              {mode === 'replay' ? <X className="w-4 h-4" /> : <Package className="w-4 h-4" />}
+              {mode === 'replay' ? 'Exit Replay Mode' : 'Load Python Replay'}
+            </button>
 
             <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg py-2 px-3">
               <div className="flex items-center gap-2">
@@ -659,21 +812,28 @@ export default function VisualizerPage() {
                 <div className="inline-grid gap-y-0 min-w-max" style={{ gridTemplateColumns: 'repeat(60, 150px)' }}>
                   {/* LEFT SIDE */}
                   <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 uppercase tracking-widest pl-4">Left Side (01)</div>
-                  {Array.from({ length: X_POS }).map((_, xIdx) => {
-                    const x = xIdx + 1; const { z1, z2 } = getCellData(x, focusedShuttleY, 1);
-                    return (
-                      <div key={`L${x}`} className="h-40 border border-slate-800/50 flex transition-all duration-300">
-                        <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
-                          <span className="text-[8px] font-bold text-slate-700">Z1</span>
-                          {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-500/60">{z1.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                    {Array.from({ length: X_POS }).map((_, xIdx) => {
+                      const x = xIdx + 1; const { z1, z2 } = getCellData(x, focusedShuttleY, 1);
+                      const action = activeActions[`1_${x}_${focusedShuttleY}`];
+                      return (
+                        <div key={`L${x}`} className={cn(
+                          "h-40 border border-slate-800/50 flex transition-all duration-300 relative",
+                          action === 'arrival' && "bg-blue-500/20 shadow-[inset_0_0_20px_rgba(59,130,246,0.3)]",
+                          action === 'retrieve' && "bg-yellow-500/20 shadow-[inset_0_0_20px_rgba(234,179,8,0.3)]",
+                          action === 'relocating' && "bg-orange-500/20 shadow-[inset_0_0_20px_rgba(249,115,22,0.3)]"
+                        )}>
+                          {action && <div className={cn("absolute inset-0 animate-ping opacity-20", action === 'arrival' ? 'bg-blue-400' : action === 'retrieve' ? 'bg-yellow-400' : 'bg-orange-400')} />}
+                          <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
+                            <span className="text-[8px] font-bold text-slate-700">Z1</span>
+                            {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-500/60">{z1.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          </div>
+                          <div className={cn("flex-1 p-2 flex flex-col items-center justify-center gap-1", z2 ? "bg-indigo-500/10" : "opacity-10")}>
+                            <span className="text-[8px] font-bold text-slate-700">Z2</span>
+                            {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-400/60">{z2.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
+                          </div>
                         </div>
-                        <div className={cn("flex-1 p-2 flex flex-col items-center justify-center gap-1", z2 ? "bg-indigo-500/10" : "opacity-10")}>
-                          <span className="text-[8px] font-bold text-slate-700">Z2</span>
-                          {z2 ? <><Box className="w-5 h-5 text-indigo-300" /><span className="text-[9px] font-mono font-bold text-indigo-200">#{z2.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-400/60">{z2.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                   {/* SHUTTLE CORRIDOR */}
                   <div className="col-span-full h-24 bg-slate-900/30 border-y border-slate-800 my-2 relative overflow-visible">
                     <div 
@@ -696,8 +856,15 @@ export default function VisualizerPage() {
                   <div className="col-span-full text-[10px] font-bold text-indigo-400 mb-2 mt-4 uppercase tracking-widest pl-4">Right Side (02)</div>
                   {Array.from({ length: X_POS }).map((_, xIdx) => {
                     const x = xIdx + 1; const { z1, z2 } = getCellData(x, focusedShuttleY, 2);
+                    const action = activeActions[`2_${x}_${focusedShuttleY}`];
                     return (
-                      <div key={`R${x}`} className="h-40 border border-slate-800/50 flex transition-all duration-300">
+                      <div key={`R${x}`} className={cn(
+                        "h-40 border border-slate-800/50 flex transition-all duration-300 relative",
+                        action === 'arrival' && "bg-blue-500/20 shadow-[inset_0_0_20px_rgba(59,130,246,0.3)]",
+                        action === 'retrieve' && "bg-yellow-500/20 shadow-[inset_0_0_20px_rgba(234,179,8,0.3)]",
+                        action === 'relocating' && "bg-orange-500/20 shadow-[inset_0_0_20px_rgba(249,115,22,0.3)]"
+                      )}>
+                        {action && <div className={cn("absolute inset-0 animate-ping opacity-20", action === 'arrival' ? 'bg-blue-400' : action === 'retrieve' ? 'bg-yellow-400' : 'bg-orange-400')} />}
                         <div className={cn("flex-1 border-r border-slate-800/20 p-2 flex flex-col items-center justify-center gap-1", z1 ? "bg-indigo-900/10" : "opacity-10")}>
                           <span className="text-[8px] font-bold text-slate-700">Z1</span>
                           {z1 ? <><Box className="w-5 h-5 text-indigo-400" /><span className="text-[9px] font-mono font-bold text-indigo-300">#{z1.id.slice(-4)}</span><span className="text-[8px] font-bold text-indigo-500/60">{z1.destination.split('_')[1]}</span></> : <div className="w-4 h-4 border border-dashed border-slate-800 rounded-sm" />}
@@ -773,8 +940,18 @@ export default function VisualizerPage() {
                     {Array.from({ length: X_POS }).map((_, xIdx) => {
                       const x = xIdx + 1; const { z1, z2 } = getCellData(x, y, activeSide);
                       const isShuttleHere = shuttle && Math.floor(shuttle.x) === x;
+                      const action = activeActions[`${activeSide}_${x}_${y}`];
                       return (
-                        <div key={`${x}_${y}`} className={cn("w-8 h-10 border border-slate-800/50 rounded-sm relative transition-all duration-300", !z1 && "bg-slate-900/10", z1 && !z2 && "bg-indigo-900/20", z1 && z2 && "bg-indigo-500/30", isShuttleHere && "ring-2 ring-indigo-400/50 ring-offset-2 ring-offset-slate-950")}>
+                        <div key={`${x}_${y}`} className={cn(
+                          "w-8 h-10 border border-slate-800/50 rounded-sm relative transition-all duration-300",
+                          !z1 && "bg-slate-900/10",
+                          z1 && !z2 && "bg-indigo-900/20",
+                          z1 && z2 && "bg-indigo-500/30",
+                          isShuttleHere && "ring-2 ring-indigo-400/50 ring-offset-2 ring-offset-slate-950",
+                          action === 'arrival' && "bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)] z-10",
+                          action === 'retrieve' && "bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.5)] z-10",
+                          action === 'relocating' && "bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)] z-10"
+                        )}>
                           {z1 && <div className={cn("absolute bottom-1 left-1 right-1 h-2 rounded-full", z2 ? "bg-indigo-400" : "bg-indigo-500/30")} />}
                           {isShuttleHere && (<div onClick={() => setFocusedShuttleY(y)} className="absolute -top-1 -left-1 -right-1 -bottom-1 border-2 border-indigo-400 rounded-md bg-indigo-400/20 flex items-center justify-center animate-pulse z-20 cursor-pointer"><Package className="w-3 h-3 text-white" /></div>)}
                         </div>
