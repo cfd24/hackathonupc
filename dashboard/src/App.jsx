@@ -8,8 +8,8 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<VisualizerPage />} />
-        <Route path="/raw-data" element={<RawDataPage />} />
+        <Route path="/" element={<RawDataPage />} />
+        <Route path="/visualizer" element={<VisualizerPage />} />
       </Routes>
     </Router>
   );
