@@ -17,7 +17,7 @@ from controllers.algorithm.algorithms import (
     VelocityColumnAlgorithm, VelocitySimpleAlgorithm, ZSafeSimpleAlgorithm, 
     ZSafeProAlgorithm, ZSafeWeightedAlgorithm, ZSafeWeightedProAlgorithm, 
     ZSafeWeightedYSafeAlgorithm, ZSafeRWeightedYSafeAlgorithm, 
-    ZSafeRWeightedYSafeVarianceAlgorithm,
+    ZSafeRWeightedYSafeVarianceAlgorithm, Variance,
     DestinationZoneAlgorithm, MaturityFirstAlgorithm
 )
 
@@ -223,6 +223,7 @@ def run_all_realistic():
         ("Z-Safe Weighted Y-Safe", ZSafeWeightedYSafeAlgorithm),
         ("Z-Safe-R Weighted Y-Safe", ZSafeRWeightedYSafeAlgorithm),
         ("Z-Safe-R Weighted Y-Safe Variance", ZSafeRWeightedYSafeVarianceAlgorithm),
+        ("Variance", Variance),
         ("Z-Weighted Pro", ZSafeWeightedProAlgorithm),
         ("Destination Zones", DestinationZoneAlgorithm),
         ("Maturity First", MaturityFirstAlgorithm),
