@@ -38,6 +38,12 @@ export default function VisualizerPage() {
   const [followShuttle, setFollowShuttle] = useState(true);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
   const [isDebugMode, setIsDebugMode] = useState(false);
+  const [isPalletizerOpen, setIsPalletizerOpen] = useState(true);
+  const [palletSlots, setPalletSlots] = useState(
+    Array.from({ length: 8 }).map((_, i) => ({ 
+      id: i, destination: null, count: 0, status: 'idle', lastShipped: 0 
+    }))
+  );
 
   // Simulation State
   const [grid, setGrid] = useState({}); 
@@ -119,6 +125,19 @@ export default function VisualizerPage() {
   }, [startCapacity, isDebugMode]);
 
   useEffect(() => { initWarehouse(); }, [initWarehouse]);
+
+  // Pallet Auto-Reset
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPalletSlots(prev => prev.map(slot => {
+        if (slot.status === 'shipped' && Date.now() - slot.lastShipped > 2000) {
+          return { ...slot, destination: null, count: 0, status: 'idle', lastShipped: 0 };
+        }
+        return slot;
+      }));
+    }, 500);
+    return () => clearInterval(timer);
+  }, []);
 
   const addLog = useCallback((msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -302,6 +321,19 @@ export default function VisualizerPage() {
             s.subState = 'returning_to_head';
           }
           else if (s.subState === 'dropping_off') {
+            // PALLETIZER INTEGRATION
+            const dest = task.destination;
+            setPalletSlots(prev => prev.map(slot => {
+              if (slot.destination === dest) {
+                const newCount = slot.count + 1;
+                if (newCount >= 12) {
+                  return { ...slot, count: 12, status: 'shipped', lastShipped: Date.now() };
+                }
+                return { ...slot, count: newCount, status: 'packing' };
+              }
+              return slot;
+            }));
+
             nextStats.outbound++;
             s.stats.outbound++;
             highlights[`${task.s}_${task.x}_${task.y}`] = 'retrieve';
@@ -381,6 +413,21 @@ export default function VisualizerPage() {
             if (boxes.length >= 12 && !retrievalTarget) {
               const myLevelBoxes = boxes.filter(b => b.y === s.y);
               if (myLevelBoxes.length > 0) {
+                // Check if this destination already has a pallet slot assigned
+                // If not, try to assign one
+                setPalletSlots(prev => {
+                  const existing = prev.find(p => p.destination === dest);
+                  if (existing) return prev;
+                  
+                  const freeIdx = prev.findIndex(p => p.destination === null);
+                  if (freeIdx !== -1) {
+                    const next = [...prev];
+                    next[freeIdx] = { ...next[freeIdx], destination: dest, count: 0, status: 'packing' };
+                    return next;
+                  }
+                  return prev;
+                });
+
                 // For all verified algos, prioritize Z=1 then X
                 myLevelBoxes.sort((a, b) => {
                   if (a.z !== b.z) return a.z - b.z;
@@ -422,7 +469,7 @@ export default function VisualizerPage() {
     setActiveActions(highlights);
     setTimeout(() => setActiveActions({}), 400);
 
-  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlotSimple, findSlotColumnGrouping, findSlotZSafeSimple, algoId, algoState]);
+  }, [grid, shuttles, stats, arrivalRate, speed, activeAisle, findSlotSimple, findSlotColumnGrouping, findSlotZSafeSimple, algoId, algoState, isDebugMode]);
 
   useEffect(() => {
     if (isPlaying) { simTimer.current = setInterval(tick, 1000 / TICKS_PER_SEC); }
@@ -495,11 +542,8 @@ export default function VisualizerPage() {
             <LayoutDashboard className="w-4 h-4" /> Benchmark
           </Link>
           <div className="px-4 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 flex items-center gap-2">
-            <Layers className="w-4 h-4" /> Visualizer
+            <Layers className="w-4 h-4" /> System Control
           </div>
-          <Link to="/palletizer" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
-            <Package className="w-4 h-4 text-emerald-400" /> Palletizer
-          </Link>
           <Link to="/raw-data" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
             <Database className="w-4 h-4 text-amber-400" /> Raw Data
           </Link>
@@ -748,6 +792,85 @@ export default function VisualizerPage() {
             </div>
           </div>
         </main>
+
+        {/* PALLETIZER SIDEBAR */}
+        <div className={cn(
+          "border-l border-slate-800 bg-[#020617] transition-all duration-500 flex flex-col relative shrink-0",
+          isPalletizerOpen ? "w-96" : "w-0 overflow-hidden"
+        )}>
+          {/* Toggle Button */}
+          <button 
+            onClick={() => setIsPalletizerOpen(!isPalletizerOpen)}
+            className="absolute -left-4 top-1/2 -translate-y-1/2 w-8 h-12 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center hover:bg-slate-700 transition-colors z-50 shadow-xl"
+          >
+            {isPalletizerOpen ? <ChevronLeft className="w-4 h-4" /> : <Play className="w-4 h-4 rotate-180" />}
+          </button>
+
+          <div className="p-8 flex flex-col h-full space-y-8 overflow-hidden">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-slate-50 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-emerald-400" /> Palletizer
+                </h2>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Robot Pack Station System</p>
+              </div>
+            </div>
+
+            <div className="flex-1 grid grid-cols-2 gap-4 auto-rows-fr">
+              {palletSlots.map((slot, idx) => (
+                <div key={idx} className={cn(
+                  "relative border rounded-2xl p-4 flex flex-col justify-between transition-all duration-500 overflow-hidden",
+                  slot.status === 'shipped' ? "bg-emerald-500/20 border-emerald-500/50 scale-95 shadow-[0_0_30px_rgba(16,185,129,0.2)]" : 
+                  slot.destination ? "bg-slate-900/50 border-slate-800" : "bg-slate-950 border-slate-900 border-dashed opacity-50"
+                )}>
+                  {slot.status === 'shipped' && (
+                    <div className="absolute inset-0 bg-emerald-500/20 animate-pulse flex items-center justify-center">
+                      <p className="text-xl font-black text-emerald-400 uppercase tracking-tighter">SHIPPED</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase">Slot {idx + 1}</p>
+                    {slot.destination && <div className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/30 text-[9px] font-bold text-indigo-400">{slot.destination.split('_')[1]}</div>}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-end justify-between">
+                      <p className="text-2xl font-black font-mono text-slate-50">{slot.count}<span className="text-xs text-slate-600 font-normal ml-1">/ 12</span></p>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className={cn("h-full transition-all duration-700", slot.count >= 12 ? "bg-emerald-500" : "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]")} 
+                        style={{ width: `${(slot.count / 12) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-800/50 flex items-center justify-between">
+                    <p className="text-[8px] font-bold text-slate-600 uppercase">
+                      {idx < 4 ? 'Robot 1' : 'Robot 2'}
+                    </p>
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      slot.status === 'shipped' ? "bg-emerald-400 animate-ping" : 
+                      slot.destination ? "bg-indigo-400 animate-pulse" : "bg-slate-800"
+                    )} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-slate-900/30 border border-slate-800 p-4 rounded-xl space-y-2">
+              <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase">
+                <span>System Efficiency</span>
+                <span className="text-emerald-400">88%</span>
+              </div>
+              <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-full w-[88%] bg-emerald-500" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
