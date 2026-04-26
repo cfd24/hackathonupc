@@ -82,7 +82,8 @@ export default function RawDataPage() {
     <div className="min-h-screen bg-[#020617] text-slate-300 font-sans flex flex-col h-screen overflow-hidden">
       <header className="px-8 py-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-950/80 backdrop-blur-md z-30">
         <div className="flex items-center gap-6">
-          <Link to="/" className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400"><ChevronLeft className="w-5 h-5" /></Link>
+          <Link to="/" className="absolute top-0 left-0 w-32 h-32 z-50 opacity-0 cursor-pointer" />
+          <div className="p-2 text-slate-800"><ChevronLeft className="w-5 h-5" /></div>
           <div className="space-y-0.5">
             <h1 className="text-lg font-bold text-slate-50 flex items-center gap-2"><Database className="w-5 h-5 text-amber-400" /> Raw Benchmark Data</h1>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-emerald-400/80 underline decoration-emerald-500/30">Terminal Output & Simulation JSON</p>
@@ -90,9 +91,6 @@ export default function RawDataPage() {
         </div>
 
         <nav className="flex items-center gap-2 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
-          <Link to="/" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 text-slate-400 transition-all flex items-center gap-2">
-            <Layers className="w-4 h-4" /> Demo
-          </Link>
           <div className="px-4 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 flex items-center gap-2">
             <Database className="w-4 h-4 text-amber-400" /> Raw Data
           </div>

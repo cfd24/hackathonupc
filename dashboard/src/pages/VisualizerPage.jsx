@@ -538,9 +538,6 @@ export default function VisualizerPage() {
         </div>
 
         <nav className="flex items-center gap-2 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
-          <div className="px-4 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 flex items-center gap-2">
-            <Layers className="w-4 h-4" /> Demo
-          </div>
           <Link to="/raw-data" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 text-slate-400 transition-all flex items-center gap-2">
             <Database className="w-4 h-4 text-amber-400" /> Raw Data
           </Link>
