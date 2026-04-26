@@ -21,6 +21,7 @@ class Warehouse:
         self.global_time = 0.0
         self.relocations = 0
         self.events = None
+        self.capacity_pct = 0
 
     def get_shuttle_move_time(self, y, target_x):
         """Calculate time to move shuttle at level Y to target X."""
@@ -115,6 +116,7 @@ class Warehouse:
                     "type": "RELOCATE",
                     "time": self.shuttles_time[y],
                     "box": z1_box['code'],
+                    "capacity_pct": self.capacity_pct,
                     "from": {"aisle": aisle, "side": side, "x": x, "y": y, "z": 1},
                     "to": {"aisle": new_pos[0], "side": new_pos[1], "x": new_pos[2], "y": new_pos[3], "z": new_pos[4]}
                 })

@@ -60,6 +60,8 @@ export default function VisualizerPage() {
   const [replayTime, setReplayTime] = useState(0);
   const [replayPointer, setReplayPointer] = useState(0);
   const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+  const [activeCap, setActiveCap] = useState(0);
+  const [availableCaps, setAvailableCaps] = useState([]);
 
   const simTimer = useRef(null);
   const lastLogRef = useRef(null);
@@ -282,6 +284,10 @@ export default function VisualizerPage() {
           .filter(ev => ev.time !== undefined && ev.type)
           .sort((a, b) => a.time - b.time);
         
+        const caps = [...new Set(validEvents.map(ev => ev.capacity_pct || 0))].sort((a, b) => a - b);
+        setAvailableCaps(caps);
+        if (caps.length > 0) setActiveCap(caps[0]);
+
         setReplayEvents(validEvents);
         setMode('replay');
         setReplayTime(0);
@@ -322,9 +328,11 @@ export default function VisualizerPage() {
       const newTime = replayTime + simSecondsPerTick;
       setReplayTime(newTime);
 
+      const filteredEvents = replayEvents.filter(ev => (ev.capacity_pct || 0) === activeCap);
+
       let currentPointer = replayPointer;
-      while (currentPointer < replayEvents.length && replayEvents[currentPointer].time <= newTime) {
-        const ev = replayEvents[currentPointer];
+      while (currentPointer < filteredEvents.length && filteredEvents[currentPointer].time <= newTime) {
+        const ev = filteredEvents[currentPointer];
         
         if (ev.type === 'STORE') {
           nextGrid[`${ev.aisle}_${ev.side}_${ev.x}_${ev.y}_${ev.z}`] = { 
@@ -377,9 +385,9 @@ export default function VisualizerPage() {
       setActiveActions(highlights);
       setTimeout(() => setActiveActions({}), 400);
       
-      if (currentPointer >= replayEvents.length && replayEvents.length > 0) {
+      if (currentPointer >= filteredEvents.length && filteredEvents.length > 0) {
         setIsPlaying(false);
-        addLog("Replay Finished.", "success");
+        addLog(`Replay for ${activeCap}% Capacity Finished.`, "success");
       }
       return;
     }
@@ -740,6 +748,43 @@ export default function VisualizerPage() {
               {mode === 'replay' ? <X className="w-4 h-4" /> : <Package className="w-4 h-4" />}
               {mode === 'replay' ? 'Exit Replay Mode' : 'Load Python Replay'}
             </button>
+
+            {mode === 'replay' && availableCaps.length > 1 && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block">Replay Capacity Run</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {availableCaps.map(cap => (
+                    <button 
+                      key={cap} 
+                      onClick={() => {
+                        setActiveCap(cap);
+                        setReplayTime(0);
+                        setReplayPointer(0);
+                        setIsPlaying(false);
+                        // Reset grid for new cap run
+                        const initialGrid = {};
+                        replayEvents
+                          .filter(ev => (ev.capacity_pct || 0) === cap && ev.type === 'STORE' && ev.time === 0)
+                          .forEach(ev => {
+                            initialGrid[`${ev.aisle}_${ev.side}_${ev.x}_${ev.y}_${ev.z}`] = { 
+                              id: ev.box.slice(-4), 
+                              destination: ev.destination 
+                            };
+                          });
+                        setGrid(initialGrid);
+                        setStats({ inbound: 0, outbound: 0, relocs: 0 });
+                      }}
+                      className={cn(
+                        "py-1.5 rounded-lg font-bold text-[10px] border transition-all",
+                        activeCap === cap ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900 border-slate-800 text-slate-400"
+                      )}
+                    >
+                      {cap}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg py-2 px-3">
               <div className="flex items-center gap-2">

@@ -172,6 +172,7 @@ def run_sandbox():
     test_stream = generate_box_stream(NUM_BOXES, destination_weights, rng)
     
     results = []
+    all_events = []
     
     for algo_name, AlgoClass in selected_algorithms:
         print(f"\n[RUNNING] Algorithm: {algo_name}")
@@ -180,6 +181,8 @@ def run_sandbox():
             # Instantiate fresh algorithm and simulator
             algo = AlgoClass()
             sim = Simulator(algo, packing_time=packing_time)
+            sim.capacity_pct = cap_pct
+            sim.warehouse.capacity_pct = cap_pct
             
             # 1. Prefill the warehouse
             if cap_pct > 0:
@@ -235,6 +238,7 @@ def run_sandbox():
                 "relocations": sim.warehouse.relocations,
                 "real_duration": real_duration
             })
+            all_events.extend(sim.events)
             print(f"  -> {cap_pct:2d}% Cap Completed successfully.")
 
     # Print Comparative Benchmark
@@ -252,8 +256,14 @@ def run_sandbox():
     print("-" * len(header))
     
     for r in results:
-        print(f"{r['name']:<{name_width}} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<7} | {r['exported_boxes']:<8} | {r['pallets']:<7} | {r['stored_throughput']:<10.1f} | {r['exported_box_throughput']:<10.1f} | {r['pallet_throughput']:<10.1f} | {r['relocations']:<9} | {r['real_duration']:<8.2f}s")
+        print(f"{r['name']:<{name_width}} | {r['cap_pct']:>3}%  | {r['sim_time']:<12.1f} | {r['processed']:<{7}} | {r['exported_boxes']:<{8}} | {r['pallets']:<{7}} | {r['stored_throughput']:<10.1f} | {r['exported_box_throughput']:<10.1f} | {r['pallet_throughput']:<10.1f} | {r['relocations']:<{9}} | {r['real_duration']:<{8}.2f}s")
         
+    # Save all events to JSON for frontend replay
+    import json
+    with open('simulation_events.json', 'w') as f:
+        json.dump(all_events, f)
+    print(f"\nSaved {len(all_events)} cumulative events to simulation_events.json")
+    
     print("\nSandbox execution finished.")
 
 if __name__ == "__main__":

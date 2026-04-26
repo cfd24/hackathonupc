@@ -103,6 +103,7 @@ class Simulator:
         # Event logging for frontend replay
         self.events = []
         self.warehouse.events = self.events
+        self.capacity_pct = 0
 
     def parse_box_code(self, code):
         if len(code) != 20:
@@ -134,6 +135,7 @@ class Simulator:
                         "type": "STORE",
                         "time": 0.0,
                         "box": code,
+                        "capacity_pct": self.capacity_pct,
                         "destination": box_data["destination"],
                         "aisle": aisle,
                         "side": side,
@@ -216,6 +218,7 @@ class Simulator:
                 self.events.append({
                     "type": "PALLET_COMPLETE",
                     "time": current_time,
+                    "capacity_pct": self.capacity_pct,
                     "destination": destination,
                     "boxes": 12
                 })
@@ -277,6 +280,7 @@ class Simulator:
                     "type": "STORE",
                     "time": self.warehouse.shuttles_time[location[3]],
                     "box": code,
+                    "capacity_pct": self.capacity_pct,
                     "destination": box_data["destination"],
                     "aisle": location[0],
                     "side": location[1],
@@ -312,6 +316,7 @@ class Simulator:
                                     "type": "RETRIEVE",
                                     "time": self.warehouse.shuttles_time[coords[3]],
                                     "box": box_code,
+                                    "capacity_pct": self.capacity_pct,
                                     "destination": dest,
                                     "aisle": coords[0],
                                     "side": coords[1],
@@ -357,12 +362,6 @@ class Simulator:
         self.pallets_completed = self.sent_pallets
         
         self.save_state("Simulation Finished")
-        
-        # Save all events to JSON for frontend replay
-        with open('simulation_events.json', 'w') as f:
-            json.dump(self.events, f)
-        print(f"Saved {len(self.events)} events to simulation_events.json")
-        
         self.print_metrics()
 
     def print_metrics(self):
