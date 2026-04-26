@@ -11,7 +11,7 @@ function App() {
       <Routes>
         <Route path="/" element={<BenchmarkPage />} />
         <Route path="/visualizer" element={<VisualizerPage />} />
-        <Route path="/palletizer" element={<Navigate to="/visualizer" replace />} />
+
         <Route path="/raw-data" element={<RawDataPage />} />
       </Routes>
     </Router>

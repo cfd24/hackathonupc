@@ -66,8 +66,8 @@ export default function BenchmarkPage() {
     CAPACITY_LEVELS.forEach(cap => {
       const capData = data.filter(d => d.capacity_pct === cap && d.status === 'ok');
       if (capData.length === 0) return;
-      const maxThroughput = Math.max(...capData.map(d => d.throughput_per_h));
-      best[`throughput-${cap}`] = capData.find(d => d.throughput_per_h === maxThroughput)?.algorithm;
+      const maxThroughput = Math.max(...capData.map(d => d.throughput_per_h * 12));
+      best[`throughput-${cap}`] = capData.find(d => d.throughput_per_h * 12 === maxThroughput)?.algorithm;
       const minRelocs = Math.min(...capData.map(d => d.z_blocks));
       best[`relocs-${cap}`] = capData.find(d => d.z_blocks === minRelocs)?.algorithm;
     });
@@ -80,7 +80,7 @@ export default function BenchmarkPage() {
       algorithms.forEach(algo => {
         const d = data.find(item => item.algorithm === algo && item.capacity_pct === cap);
         if (d && d.status === 'ok') {
-          entry[algo] = d.throughput_per_h;
+          entry[algo] = d.throughput_per_h * 12;
           entry[`${algo}-blocks`] = d.z_blocks;
         }
       });
@@ -120,7 +120,7 @@ export default function BenchmarkPage() {
     return Array.from({ length: numHours }).map((_, i) => {
       const entry = { name: `H${i+1}` };
       realisticData.forEach(algo => {
-        entry[algo.algorithm] = algo.long.throughput_per_hour[i];
+        entry[algo.algorithm] = algo.long.throughput_per_hour[i] * 12;
       });
       return entry;
     });
@@ -145,22 +145,12 @@ export default function BenchmarkPage() {
           </div>
           
           <div className="flex items-center gap-4">
-            <Link to="/visualizer" className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"><Play className="w-4 h-4" /> Live Visualizer</Link>
-            <Link to="/palletizer" className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"><Package className="w-4 h-4 text-emerald-400" /> Palletizer</Link>
+            <Link to="/visualizer" className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"><Play className="w-4 h-4" /> Demo</Link>
             <Link to="/raw-data" className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition-all border border-slate-700"><Database className="w-4 h-4 text-amber-400" /> Raw Data</Link>
-            <button onClick={() => setShowImporter(!showImporter)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-indigo-500/20 active:scale-95"><Import className="w-4 h-4" /> Import JSON</button>
           </div>
         </header>
 
-        {showImporter && (
-          <Card className="border-indigo-500/30 bg-indigo-500/5">
-            <div className="space-y-4">
-              <textarea value={pastedData} onChange={(e) => setPastedData(e.target.value)} placeholder="Paste benchmark JSON here..." className="w-full h-40 bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-sm outline-none" />
-              <button onClick={handleImport} className="w-full py-2 bg-indigo-500 text-white rounded-lg font-bold">Sync Dashboard</button>
-              {importerError && <p className="text-rose-400 text-xs font-bold">{importerError}</p>}
-            </div>
-          </Card>
-        )}
+
 
         {activeTab === 'comparative' ? (
           <>
@@ -168,7 +158,7 @@ export default function BenchmarkPage() {
               <Card className="bg-gradient-to-br from-indigo-500/10 to-transparent border-indigo-500/20">
                 <p className="text-slate-400 text-sm font-medium">Top Performer (75%)</p>
                 <h4 className="text-2xl font-bold text-slate-50 mt-1">{bestPerformers['throughput-75']}</h4>
-                <div className="mt-4 flex items-center gap-2"><Badge variant="indigo">Best Throughput</Badge></div>
+                <div className="mt-4 flex items-center gap-2"><Badge variant="indigo">Best BOXES/HR</Badge></div>
               </Card>
               <Card className="bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20">
                 <p className="text-slate-400 text-sm font-medium">Efficiency King</p>
@@ -184,17 +174,30 @@ export default function BenchmarkPage() {
 
             <Card title="Performance Matrix" icon={Award}>
               <div className="overflow-x-auto -mx-6">
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="border-b border-slate-800"><th className="px-6 py-4 text-xs font-bold uppercase text-slate-500">Algorithm</th>{CAPACITY_LEVELS.map(cap => <th key={cap} className="px-6 py-4 text-xs font-bold uppercase text-slate-500 text-center">{cap}%</th>)}</tr></thead>
+                <table className="w-full text-left border-collapse whitespace-nowrap">
+                  <thead>
+                    <tr className="border-b border-slate-800">
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500">Algorithm</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 text-center">Cap %</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 text-right">SIM TIME (S)</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 text-right">PALLETS</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 text-right">BOXES/HR</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 text-right">Z-BLOCKS</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 text-center">STATUS</th>
+                    </tr>
+                  </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {algorithms.map(algo => (
-                      <tr key={algo} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="px-6 py-4"><span className="font-bold text-slate-200">{algo}</span></td>
-                        {CAPACITY_LEVELS.map(cap => {
-                          const run = getAlgoData(algo, cap);
-                          if (!run || run.status === 'failed') return <td key={cap} className="px-6 py-4 text-center"><Badge variant="danger">FAILED</Badge></td>;
-                          return (<td key={cap} className="px-6 py-4 text-center"><div className="text-sm font-mono font-bold text-slate-200">{run.throughput_per_h.toFixed(1)}</div><div className="text-[10px] text-slate-500">{run.z_blocks} Blocks</div></td>);
-                        })}
+                    {data.map((run, idx) => (
+                      <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="px-6 py-4"><span className="font-bold text-slate-200">{run.algorithm}</span></td>
+                        <td className="px-6 py-4 text-center text-sm text-slate-300">{run.capacity_pct}%</td>
+                        <td className="px-6 py-4 text-right text-sm text-slate-300 font-mono">{run.sim_time_s?.toFixed(1) || '-'}</td>
+                        <td className="px-6 py-4 text-right text-sm text-slate-300 font-mono">{run.pallets || '-'}</td>
+                        <td className="px-6 py-4 text-right text-sm text-indigo-400/90 font-mono font-bold">{run.throughput_per_h ? (run.throughput_per_h * 12).toFixed(1) : '-'}</td>
+                        <td className="px-6 py-4 text-right text-sm text-slate-300 font-mono">{run.z_blocks}</td>
+                        <td className="px-6 py-4 text-center">
+                          {run.status === 'ok' ? <Badge variant="success">OK</Badge> : <Badge variant="danger">FAILED</Badge>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -203,7 +206,7 @@ export default function BenchmarkPage() {
             </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <Card title="Throughput vs. Capacity" icon={Zap}><div className="h-80 mt-4"><ResponsiveContainer><LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis dataKey="name" stroke="#64748b" /><YAxis stroke="#64748b" /><Tooltip contentStyle={{ backgroundColor: '#0f172a' }} /><Legend />{algorithms.map((algo, i) => <Line key={algo} type="monotone" dataKey={algo} stroke={colors[i % colors.length]} strokeWidth={3} dot={{ r: 4 }} connectNulls />)}</LineChart></ResponsiveContainer></div></Card>
+              <Card title="BOXES/HR vs. Capacity" icon={Zap}><div className="h-80 mt-4"><ResponsiveContainer><LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis dataKey="name" stroke="#64748b" /><YAxis stroke="#64748b" /><Tooltip contentStyle={{ backgroundColor: '#0f172a' }} /><Legend />{algorithms.map((algo, i) => <Line key={algo} type="monotone" dataKey={algo} stroke={colors[i % colors.length]} strokeWidth={3} dot={{ r: 4 }} connectNulls />)}</LineChart></ResponsiveContainer></div></Card>
               <Card title="Relocation Penalty" icon={Eraser}><div className="h-80 mt-4"><ResponsiveContainer><LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis dataKey="name" stroke="#64748b" /><YAxis stroke="#64748b" /><Tooltip contentStyle={{ backgroundColor: '#0f172a' }} /><Legend />{algorithms.map((algo, i) => <Line key={algo} type="monotone" dataKey={`${algo}-blocks`} stroke={colors[i % colors.length]} strokeWidth={2} dot={{ r: 4 }} connectNulls />)}</LineChart></ResponsiveContainer></div></Card>
             </div>
           </>
@@ -234,7 +237,7 @@ export default function BenchmarkPage() {
               <Card title="Worst-Case Analysis (P10)" icon={ShieldAlert}>
                 <div className="space-y-4 mt-2">
                   <p className="text-xs text-slate-500 leading-relaxed italic">
-                    P10 Throughput represents the worst 10% of hours. High average but low P10 indicates an algorithm prone to relocation storms and throughput collapses.
+                    P10 BOXES/HR represents the worst 10% of hours. High average but low P10 indicates an algorithm prone to relocation storms and boxes/hr collapses.
                   </p>
                   <div className="grid grid-cols-1 gap-3">
                     {realisticData.map((r, i) => (
@@ -246,11 +249,11 @@ export default function BenchmarkPage() {
                         <div className="flex gap-8">
                           <div className="text-right">
                              <p className="text-[10px] text-slate-500 font-bold uppercase">Steady Avg</p>
-                             <p className="text-sm font-mono font-bold text-slate-200">{r.steady.steady_state_throughput.toFixed(0)}</p>
+                             <p className="text-sm font-mono font-bold text-slate-200">{(r.steady.steady_state_throughput * 12).toFixed(0)}</p>
                           </div>
                           <div className="text-right border-l border-slate-800 pl-8">
                              <p className="text-[10px] text-rose-500 font-bold uppercase">Worst Case (P10)</p>
-                             <p className="text-sm font-mono font-bold text-rose-400">{r.steady.p5_throughput.toFixed(0)}</p>
+                             <p className="text-sm font-mono font-bold text-rose-400">{(r.steady.p5_throughput * 12).toFixed(0)}</p>
                           </div>
                         </div>
                       </div>
@@ -267,8 +270,8 @@ export default function BenchmarkPage() {
                      <h5 className="font-bold text-slate-200 border-b border-slate-800 pb-2">{r.algorithm}</h5>
                      <div className="flex justify-between items-end">
                        <div>
-                         <p className="text-[10px] text-slate-500 font-bold uppercase">Spike Throughput</p>
-                         <p className="text-xl font-mono font-bold text-indigo-400">{r.spike.steady_state_throughput.toFixed(0)}</p>
+                         <p className="text-[10px] text-slate-500 font-bold uppercase">Spike BOXES/HR</p>
+                         <p className="text-xl font-mono font-bold text-indigo-400">{(r.spike.steady_state_throughput * 12).toFixed(0)}</p>
                        </div>
                        <div className="text-right">
                          <p className="text-[10px] text-slate-500 font-bold uppercase">Recovery</p>
@@ -279,8 +282,8 @@ export default function BenchmarkPage() {
                      </div>
                      <div className="h-1 bg-slate-900 rounded-full overflow-hidden">
                         <div 
-                          className={cn("h-full", r.spike.steady_state_throughput > 2000 ? "bg-emerald-500" : "bg-indigo-500")}
-                          style={{ width: `${Math.min(100, r.spike.steady_state_throughput / 30)}%` }}
+                          className={cn("h-full", r.spike.steady_state_throughput * 12 > 24000 ? "bg-emerald-500" : "bg-indigo-500")}
+                          style={{ width: `${Math.min(100, (r.spike.steady_state_throughput * 12) / 360)}%` }}
                         />
                      </div>
                    </div>

@@ -96,9 +96,6 @@ export default function RawDataPage() {
           <Link to="/visualizer" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
             <Layers className="w-4 h-4" /> Visualizer
           </Link>
-          <Link to="/palletizer" className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 text-emerald-400/80">
-            <Package className="w-4 h-4" /> Palletizer
-          </Link>
           <div className="px-4 py-2 rounded-lg text-xs font-bold bg-amber-600 text-white shadow-lg shadow-amber-500/20 flex items-center gap-2">
             <Database className="w-4 h-4" /> Raw Data
           </div>
@@ -136,7 +133,7 @@ export default function RawDataPage() {
                             { label: 'Algorithm', key: 'algorithm', align: 'left' },
                             { label: 'Sim Time (s)', key: 'sim_time_s', align: 'right' },
                             { label: 'Pallets', key: 'pallets', align: 'right' },
-                            { label: 'Throughput/h', key: 'throughput_per_h', align: 'right' },
+                            { label: 'BOXES/HR', key: 'throughput_per_h', align: 'right' },
                             { label: 'Z-Blocks', key: 'z_blocks', align: 'right' },
                             { label: 'Status', key: null, align: 'center' }
                           ].map(col => (
@@ -168,7 +165,7 @@ export default function RawDataPage() {
                             <td className="px-4 py-2.5 font-bold">{row.algorithm}</td>
                             <td className="px-4 py-2.5 text-right">{row.sim_time_s ? row.sim_time_s.toLocaleString() : '---'}</td>
                             <td className="px-4 py-2.5 text-right">{row.pallets || '---'}</td>
-                            <td className="px-4 py-2.5 text-right text-indigo-400/90 font-bold">{row.throughput_per_h ? row.throughput_per_h.toFixed(1) : '---'}</td>
+                            <td className="px-4 py-2.5 text-right text-indigo-400/90 font-bold">{row.throughput_per_h ? (row.throughput_per_h * 12).toFixed(1) : '---'}</td>
                             <td className="px-4 py-2.5 text-right">{row.z_blocks !== null ? row.z_blocks : '---'}</td>
                             <td className="px-4 py-2.5 text-center">
                               <span className={cn(
